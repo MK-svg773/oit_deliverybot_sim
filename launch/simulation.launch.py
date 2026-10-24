@@ -82,6 +82,8 @@ def start_simulation(context):
         ET.SubElement(sensor.find('contact'), 'topic').text = '/simulation/contacts'
     world.append(robot)
     obstacle = yaml.safe_load((config / 'scenarios.yaml').read_text())[get('scenario')]
+    if obstacle and get('obstacle_y'):
+        obstacle['y'] = float(get('obstacle_y'))
     if obstacle:
         model = ET.SubElement(world, 'model', name='obstacle')
         ET.SubElement(model, 'pose').text = f"{obstacle['x']} {obstacle['y']} {pose[2] + .6} 0 0 {obstacle['yaw']}"
@@ -139,6 +141,7 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('environment', default_value=str(config / 'corridor.yaml')),
         DeclareLaunchArgument('mesh', default_value=''),
+        DeclareLaunchArgument('obstacle_y', default_value=''),
         *[DeclareLaunchArgument(k, default_value='') for k in ('x', 'y', 'z', 'yaw')],
         DeclareLaunchArgument('scenario', default_value='clear', choices=['clear', 'static', 'crossing', 'following', 'oncoming', 'stop_go', 'speed_change']),
         DeclareLaunchArgument('gui', default_value='true', choices=['true', 'false']),

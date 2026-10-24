@@ -18,6 +18,8 @@ def resolve_scenario(config, name, seed):
                                           'duration': obstacle.get('duration', 0.)}])
     obstacle['segments'] = [{'speed': s['speed'] * scale, 'duration': s['duration']}
                             for s in segments]
+    if name == 'oncoming':
+        obstacle['y'] = rng.uniform(0.3, 0.7) * rng.choice((-1, 1))
     return obstacle
 
 

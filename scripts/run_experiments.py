@@ -294,9 +294,12 @@ def run_trial(args, environment, scenario, method, trial, root, config):
     env.update(ROS_DOMAIN_ID=args.domain,GZ_PARTITION=f'deliverybot-{os.getpid()}-{output.name}',
                LIBGL_ALWAYS_SOFTWARE=env.get('LIBGL_ALWAYS_SOFTWARE','1'))
     try:
-        sim=launch_process(['ros2','launch','oit_deliverybot_sim','simulation.launch.py',
-                           f'environment:={args.environment}',f'scenario:={scenario}',
-                           f'gui:={args.gui}','run:=true'],output/'simulation.log',env,handles)
+        sim = launch_process(
+            ['ros2', 'launch', 'oit_deliverybot_sim', 'simulation.launch.py',
+             f'environment:={args.environment}', f'scenario:={scenario}',
+             f'gui:={args.gui}', 'run:=true',
+             *([f"obstacle_y:={obstacle['y']}"] if scenario == 'oncoming' else [])],
+            output / 'simulation.log', env, handles)
         nav=launch_process(['ros2','launch','oit_deliverybot_sim','simulation_navigation.launch.py',
                            f'environment:={args.environment}',f'method:={method}',
                            f'additional_delay:={args.additional_delay}',f'velocity_noise_std:={args.velocity_noise_std}'],output/'navigation.log',env,handles)
