@@ -1,0 +1,30 @@
+# Simulation seconds relative to accepted navigation goal. Intervals are half-open.
+# Final seeds are reserved; development runs cannot select them accidentally.
+_variation:
+  development_seeds: [1, 999]
+  final_seeds: [10000, 19999]
+  delay_offset_s: [0.0, 0.3]
+  speed_scale: [0.6, 1.2]
+clear: null
+static: {x: 3.0, y: 0.0, yaw: 0.0, speed: 0.0, delay: 0.0, duration: 0.0}
+crossing: {x: 3.0, y: -0.7, yaw: 1.57079632679, speed: 1.0, delay: 5.7, duration: 1.9}
+following: {x: 1.8, y: 0.0, yaw: 0.0, speed: 0.25, delay: 0.0, duration: 24.0,
+            speed_scale: [0.9, 1.0]}
+oncoming: {x: 7.0, y: 0.0, yaw: 3.14159265359, speed: 1.0, delay: 0.0, duration: 6.5}
+stop_go:
+  x: 3.0
+  y: -0.7
+  yaw: 1.57079632679
+  delay: 4.7
+  segments:
+    - {speed: 1.0, duration: 0.7}
+    - {speed: 0.0, duration: 2.0}
+    - {speed: 1.0, duration: 1.2}
+speed_change:
+  x: 7.0
+  y: 0.0
+  yaw: 3.14159265359
+  delay: 0.0
+  segments:
+    - {speed: 1.0, duration: 3.0}
+    - {speed: 0.5, duration: 6.0}

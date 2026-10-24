@@ -1,0 +1,88 @@
+<?xml version="1.0"?>
+<sdf version="1.9">
+  <!-- Simplified body, not a calibrated dynamics model. Dimensions are from
+       nav2_params.yaml, ddt_vehicle.yaml and launch/lidar/XT32.launch.py.
+       Mass/inertia, friction and acceleration limits are provisional. -->
+  <model name="deliverybot">
+    <link name="base_link">
+      <inertial>
+        <pose>-0.12 0 0.22 0 0 0</pose><mass>10</mass>
+        <inertia><ixx>0.22</ixx><iyy>0.24</iyy><izz>0.34</izz></inertia>
+      </inertial>
+      <collision name="body">
+        <pose>-0.12 0 0.22 0 0 0</pose>
+        <geometry><box><size>0.46 0.44 0.24</size></box></geometry>
+      </collision>
+      <visual name="body">
+        <pose>-0.12 0 0.22 0 0 0</pose>
+        <geometry><box><size>0.46 0.44 0.24</size></box></geometry>
+        <material><ambient>0.1 0.4 0.8 1</ambient><diffuse>0.1 0.4 0.8 1</diffuse></material>
+      </visual>
+      <sensor name="body_contact" type="contact">
+        <always_on>true</always_on><update_rate>50</update_rate>
+        <topic>/simulation/contacts</topic>
+        <contact><collision>body</collision><topic>/simulation/contacts</topic></contact>
+      </sensor>
+      <!-- Idealised, reduced horizontal sampling. No intensity/return/dropout
+           or intra-scan motion model: this is not an XT32 sensor emulator. -->
+      <sensor name="lidar" type="gpu_lidar">
+        <pose>-0.12 0 0.6374 0 0 0</pose>
+        <topic>/simulation/lidar</topic><gz_frame_id>sim/hesai_lidar</gz_frame_id>
+        <always_on>true</always_on><update_rate>10</update_rate>
+        <lidar>
+          <scan>
+            <horizontal><samples>720</samples><resolution>1</resolution>
+              <min_angle>-3.14159265359</min_angle><max_angle>3.13286600733</max_angle>
+            </horizontal>
+            <vertical><samples>32</samples><resolution>1</resolution>
+              <min_angle>-0.27925268032</min_angle><max_angle>0.26179938780</max_angle>
+            </vertical>
+          </scan>
+          <range><min>0.1</min><max>50</max><resolution>0.01</resolution></range>
+        </lidar>
+      </sensor>
+    </link>
+    <link name="left_wheel">
+      <pose>0 0.1666 0.0935 -1.57079632679 0 0</pose>
+      <inertial><mass>0.5</mass><inertia><ixx>0.0012</ixx><iyy>0.0012</iyy><izz>0.0022</izz></inertia></inertial>
+      <collision name="wheel"><geometry><cylinder><radius>0.0935</radius><length>0.04</length></cylinder></geometry></collision>
+      <visual name="wheel"><geometry><cylinder><radius>0.0935</radius><length>0.04</length></cylinder></geometry></visual>
+    </link>
+    <link name="right_wheel">
+      <pose>0 -0.1666 0.0935 -1.57079632679 0 0</pose>
+      <inertial><mass>0.5</mass><inertia><ixx>0.0012</ixx><iyy>0.0012</iyy><izz>0.0022</izz></inertia></inertial>
+      <collision name="wheel"><geometry><cylinder><radius>0.0935</radius><length>0.04</length></cylinder></geometry></collision>
+      <visual name="wheel"><geometry><cylinder><radius>0.0935</radius><length>0.04</length></cylinder></geometry></visual>
+    </link>
+    <link name="caster">
+      <pose>-0.29 0 0.04 0 0 0</pose>
+      <inertial><mass>0.1</mass><inertia><ixx>0.000064</ixx><iyy>0.000064</iyy><izz>0.000064</izz></inertia></inertial>
+      <collision name="caster">
+        <geometry><sphere><radius>0.04</radius></sphere></geometry>
+        <surface><friction><ode><mu>0</mu><mu2>0</mu2></ode></friction></surface>
+      </collision>
+      <visual name="caster"><geometry><sphere><radius>0.04</radius></sphere></geometry></visual>
+    </link>
+    <joint name="left_joint" type="revolute">
+      <parent>base_link</parent><child>left_wheel</child>
+      <axis><xyz>0 0 1</xyz><limit><lower>-1e16</lower><upper>1e16</upper></limit></axis>
+    </joint>
+    <joint name="right_joint" type="revolute">
+      <parent>base_link</parent><child>right_wheel</child>
+      <axis><xyz>0 0 1</xyz><limit><lower>-1e16</lower><upper>1e16</upper></limit></axis>
+    </joint>
+    <joint name="caster_joint" type="ball"><parent>base_link</parent><child>caster</child></joint>
+    <plugin filename="gz-sim-diff-drive-system" name="gz::sim::systems::DiffDrive">
+      <left_joint>left_joint</left_joint><right_joint>right_joint</right_joint>
+      <wheel_separation>0.3332</wheel_separation><wheel_radius>0.0935</wheel_radius>
+      <topic>/simulation/cmd_vel</topic><odom_topic>/simulation/odom</odom_topic>
+      <tf_topic>/simulation/tf</tf_topic>
+      <frame_id>sim/odom</frame_id><child_frame_id>sim/base_link</child_frame_id>
+      <odom_publish_frequency>50</odom_publish_frequency>
+      <max_linear_velocity>0.5</max_linear_velocity><min_linear_velocity>-0.5</min_linear_velocity>
+      <max_angular_velocity>1</max_angular_velocity><min_angular_velocity>-1</min_angular_velocity>
+      <max_linear_acceleration>0.5</max_linear_acceleration><min_linear_acceleration>-0.5</min_linear_acceleration>
+      <max_angular_acceleration>1</max_angular_acceleration><min_angular_acceleration>-1</min_angular_acceleration>
+    </plugin>
+  </model>
+</sdf>

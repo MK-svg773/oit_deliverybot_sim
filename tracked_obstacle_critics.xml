@@ -1,0 +1,7 @@
+<class_libraries>
+  <library path="oit_deliverybot_sim">
+    <class type="mppi::critics::TrackedObstacleCritic" base_class_type="mppi::critics::CriticFunction">
+      <description>Scan-track distance cost with optional constant velocity prediction.</description>
+    </class>
+  </library>
+</class_libraries>

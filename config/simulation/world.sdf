@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<sdf version="1.9">
+  <world name="school">
+    <physics name="physics" type="ignored">
+      <max_step_size>0.005</max_step_size><real_time_factor>1</real_time_factor>
+    </physics>
+    <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics"/>
+    <plugin filename="gz-sim-user-commands-system" name="gz::sim::systems::UserCommands"/>
+    <plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster"/>
+    <plugin filename="gz-sim-sensors-system" name="gz::sim::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
+    <plugin filename="gz-sim-contact-system" name="gz::sim::systems::Contact"/>
+    <light name="sun" type="directional">
+      <pose>0 0 10 0 0 0</pose><direction>-0.5 0.1 -0.9</direction>
+      <diffuse>0.8 0.8 0.8 1</diffuse><specular>0.2 0.2 0.2 1</specular>
+    </light>
+    <!-- The launch supplies the same mesh to visual and collision geometry.
+         No artificial ground plane is added beneath holes in the reconstruction. -->
+    <model name="school_mesh">
+      <static>true</static>
+      <link name="environment">
+        <collision name="surface"><geometry><mesh><uri/></mesh></geometry></collision>
+        <visual name="surface">
+          <geometry><mesh><uri/></mesh></geometry>
+          <material><ambient>0.6 0.65 0.7 1</ambient><diffuse>0.6 0.65 0.7 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+  </world>
+</sdf>

@@ -1,0 +1,41 @@
+cmake_minimum_required(VERSION 3.10)
+project(oit_deliverybot_sim)
+
+if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  add_compile_options(-Wall -Wextra -Wpedantic)
+endif()
+
+find_package(ament_cmake REQUIRED)
+find_package(nav2_mppi_controller REQUIRED)
+find_package(sensor_msgs REQUIRED)
+find_package(pluginlib REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
+find_package(xtensor REQUIRED)
+
+add_library(${PROJECT_NAME} SHARED src/tracked_obstacle_critic.cpp)
+target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_17)
+target_include_directories(${PROJECT_NAME} PUBLIC include)
+ament_target_dependencies(${PROJECT_NAME}
+  nav2_mppi_controller sensor_msgs tf2_geometry_msgs pluginlib)
+pluginlib_export_plugin_description_file(nav2_mppi_controller tracked_obstacle_critics.xml)
+install(TARGETS ${PROJECT_NAME} LIBRARY DESTINATION lib)
+
+if(BUILD_TESTING)
+  find_package(ament_lint_auto REQUIRED)
+  set(ament_cmake_copyright_FOUND TRUE)
+  set(ament_cmake_cpplint_FOUND TRUE)
+  ament_lint_auto_find_test_dependencies()
+  find_package(ament_cmake_pytest REQUIRED)
+  ament_add_pytest_test(simulation_metrics test/test_simulation_metrics.py)
+  ament_add_pytest_test(scan_tracker test/test_scan_tracker.py)
+  ament_add_pytest_test(simulation_scenarios test/test_simulation_scenarios.py)
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(tracked_obstacle_cost test/test_tracked_obstacle_cost.cpp)
+  target_include_directories(tracked_obstacle_cost PRIVATE include)
+endif()
+
+file(GLOB ALL_SCRIPTS "scripts/*.py")
+install(PROGRAMS ${ALL_SCRIPTS} DESTINATION lib/${PROJECT_NAME})
+install(DIRECTORY config launch DESTINATION share/${PROJECT_NAME})
+
+ament_package()

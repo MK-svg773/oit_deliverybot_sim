@@ -1,0 +1,8 @@
+world: corridor
+mesh: ''
+map: corridor_map.yaml
+start: [0.0, 0.0, 0.04, 0.0]
+goal: [6.0, 0.0, 0.0]
+timeout: 60.0
+obstacle_radius: 0.25
+stop_speed: 0.03

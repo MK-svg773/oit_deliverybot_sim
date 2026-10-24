@@ -1,0 +1,33 @@
+plugin: nav2_mppi_controller::MPPIController
+time_steps: 32
+model_dt: 0.1
+batch_size: 600
+vx_std: 0.15
+vy_std: 0.0
+wz_std: 0.3
+vx_max: 0.5
+vx_min: -0.1
+vy_max: 0.0
+wz_max: 1.0
+ax_max: 0.5
+ax_min: -0.5
+az_max: 1.0
+iteration_count: 1
+prune_distance: 1.7
+transform_tolerance: 0.5
+temperature: 0.3
+gamma: 0.015
+motion_model: DiffDrive
+visualize: false
+critics:
+- ConstraintCritic
+- CostCritic
+- GoalCritic
+- GoalAngleCritic
+- PathAlignCritic
+- PathFollowCritic
+- PathAngleCritic
+- PreferForwardCritic
+
+CostCritic:
+  consider_footprint: true
