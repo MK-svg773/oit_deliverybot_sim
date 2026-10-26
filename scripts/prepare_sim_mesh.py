@@ -28,7 +28,7 @@ def main():
         parser.error('output must be a new .obj file; existing files are not overwritten')
 
     cloud = o3d.io.read_point_cloud(str(args.cloud), remove_nan_points=True,
-                                  remove_infinite_points=True)
+                                    remove_infinite_points=True)
     cloud = cloud.crop(o3d.geometry.AxisAlignedBoundingBox(lower, upper))
     cloud = cloud.voxel_down_sample(args.voxel)
     if len(cloud.points) < 31:
@@ -48,7 +48,7 @@ def main():
     mesh.compute_vertex_normals()
     args.output.parent.mkdir(parents=True, exist_ok=True)
     if not o3d.io.write_triangle_mesh(str(args.output), mesh, write_vertex_colors=False,
-                                    write_triangle_uvs=False):
+                                      write_triangle_uvs=False):
         raise RuntimeError(f'could not write {args.output}')
     print(f'{args.output.resolve()}: {len(mesh.vertices)} vertices, '
           f'{len(mesh.triangles)} triangles; coordinates unchanged')

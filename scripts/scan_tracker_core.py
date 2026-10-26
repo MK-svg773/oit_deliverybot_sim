@@ -31,8 +31,8 @@ class StaticMap:
         c, s = math.cos(self.yaw), math.sin(self.yaw)
         x = int(math.floor((c * dx + s * dy) / self.info.resolution))
         y = int(math.floor((-s * dx + c * dy) / self.info.resolution))
-        return (not (0 <= x < self.info.width and 0 <= y < self.info.height)
-                or self.distance[y, x] <= 0.20)
+        return (not (0 <= x < self.info.width and 0 <= y < self.info.height) or
+                self.distance[y, x] <= 0.20)
 
 
 def detections(scan, transform, static_map):

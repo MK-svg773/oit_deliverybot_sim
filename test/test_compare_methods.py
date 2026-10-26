@@ -34,18 +34,18 @@ def test_synthetic_csv_known_inference(tmp_path):
     assert c2['success'] == 6
     assert c2['success_rate'] == 1
     assert c2['wilson_low'] == pytest.approx(0.6096657)
-    success = next(r for r in tests if r['comparison'] == 'C1-C2'
-                   and r['metric'] == 'success')
+    success = next(r for r in tests if r['comparison'] == 'C1-C2' and
+                   r['metric'] == 'success')
     assert (success['a_only'], success['c2_only']) == (0, 4)
     assert success['p_value'] == 0.125
-    stopped = next(r for r in tests if r['comparison'] == 'C1-C2'
-                   and r['metric'] == 'stopped_s')
+    stopped = next(r for r in tests if r['comparison'] == 'C1-C2' and
+                   r['metric'] == 'stopped_s')
     assert stopped['n'] == 6
     assert stopped['median_delta'] == 3.5
     assert stopped['statistic'] == 0
     assert stopped['p_value'] == 0.03125
-    arrival = next(r for r in tests if r['comparison'] == 'C1-C2'
-                   and r['metric'] == 'arrival_s')
+    arrival = next(r for r in tests if r['comparison'] == 'C1-C2' and
+                   r['metric'] == 'arrival_s')
     assert arrival['n'] == 2
     assert arrival['median_delta'] == 1.5
     assert arrival['p_value'] == 0.5
@@ -87,8 +87,8 @@ def test_pairing_and_retry_validation(tmp_path):
             writer.writeheader()
             writer.writerows(data)
     index = tmp_path / 'retry_index.csv'
-    index.write_text('scenario,method,seed,retry_output\nclear,mppi,1,'
-                     + str(retry.parent / 'trial') + '\n')
+    index.write_text('scenario,method,seed,retry_output\nclear,mppi,1,' +
+                     str(retry.parent / 'trial') + '\n')
     loaded = compare.load_results(original, index)
     assert loaded[0]['outcome'] == 'success'
     assert loaded[1]['outcome'] == 'infrastructure_error'

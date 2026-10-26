@@ -4,13 +4,14 @@ from pathlib import Path
 import tempfile
 import xml.etree.ElementTree as ET
 
-import yaml
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, ExecuteProcess, OpaqueFunction, RegisterEventHandler, Shutdown
+from launch.actions import (
+    DeclareLaunchArgument, ExecuteProcess, OpaqueFunction, RegisterEventHandler, Shutdown)
 from launch.event_handlers import OnShutdown
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+import yaml
 
 
 def plugin(parent, kind):
@@ -30,15 +31,23 @@ def box(world, name, pose, size):
 
 def truth(model, topic):
     pub = plugin(model, 'odometry-publisher')
-    for key, value in dict(odom_frame='world', robot_base_frame='truth', dimensions=3,
-                           odom_publish_frequency=50, odom_topic=topic,
-                           tf_topic=topic + '/tf').items():
+    for key, value in {
+        'odom_frame': 'world',
+        'robot_base_frame': 'truth',
+        'dimensions': 3,
+        'odom_publish_frequency': 50,
+        'odom_topic': topic,
+        'tf_topic': topic + '/tf',
+    }.items():
         ET.SubElement(pub, key).text = str(value)
 
 
 def start_simulation(context):
     config = Path(get_package_share_directory('oit_deliverybot_sim')) / 'config/simulation'
-    get = lambda key: LaunchConfiguration(key).perform(context)
+
+    def get(key):
+        return LaunchConfiguration(key).perform(context)
+
     env_path = Path(get('environment')).expanduser().resolve()
     env = yaml.safe_load(env_path.read_text())
     tree = ET.parse(config / 'world.sdf')
@@ -86,7 +95,8 @@ def start_simulation(context):
         obstacle['y'] = float(get('obstacle_y'))
     if obstacle:
         model = ET.SubElement(world, 'model', name='obstacle')
-        ET.SubElement(model, 'pose').text = f"{obstacle['x']} {obstacle['y']} {pose[2] + .6} 0 0 {obstacle['yaw']}"
+        ET.SubElement(model, 'pose').text = (
+            f"{obstacle['x']} {obstacle['y']} {pose[2] + .6} 0 0 {obstacle['yaw']}")
         link = ET.SubElement(model, 'link', name='body')
         # Keep the cylinder upright and clear of floor friction. VelocityControl
         # controls velocity, not orientation against contact-induced torque.
@@ -94,10 +104,15 @@ def start_simulation(context):
         inertial = ET.SubElement(link, 'inertial')
         ET.SubElement(inertial, 'mass').text = '60'
         inertia = ET.SubElement(inertial, 'inertia')
-        for key, value in dict(ixx=8, iyy=8, izz=2).items():
+        for key, value in {
+            'ixx': 8,
+            'iyy': 8,
+            'izz': 2,
+        }.items():
             ET.SubElement(inertia, key).text = str(value)
         for kind in ('collision', 'visual'):
-            cyl = ET.SubElement(ET.SubElement(ET.SubElement(link, kind, name='body'), 'geometry'), 'cylinder')
+            cyl = ET.SubElement(ET.SubElement(ET.SubElement(
+                link, kind, name='body'), 'geometry'), 'cylinder')
             ET.SubElement(cyl, 'radius').text = str(env['obstacle_radius'])
             ET.SubElement(cyl, 'length').text = '1.2'
         ctrl = plugin(model, 'velocity-control')
@@ -143,7 +158,8 @@ def generate_launch_description():
         DeclareLaunchArgument('mesh', default_value=''),
         DeclareLaunchArgument('obstacle_y', default_value=''),
         *[DeclareLaunchArgument(k, default_value='') for k in ('x', 'y', 'z', 'yaw')],
-        DeclareLaunchArgument('scenario', default_value='clear', choices=['clear', 'static', 'crossing', 'following', 'oncoming', 'stop_go', 'speed_change']),
+        DeclareLaunchArgument('scenario', default_value='clear', choices=[
+            'clear', 'static', 'crossing', 'following', 'oncoming', 'stop_go', 'speed_change']),
         DeclareLaunchArgument('gui', default_value='true', choices=['true', 'false']),
         DeclareLaunchArgument('run', default_value='false', choices=['true', 'false']),
         OpaqueFunction(function=start_simulation),

@@ -253,8 +253,8 @@ def write_outputs(rows, summary, tests, output):
     fig, axes = plt.subplots(3, 1, figsize=(11, 10), layout='constrained')
     for ax, metric in zip(axes, METRICS[2:]):
         for j, (label, _) in enumerate(COMPARISONS):
-            group = [r for r in tests if r['comparison'] == label and r['metric'] == metric
-                     and r['median_delta'] is not None]
+            group = [r for r in tests if r['comparison'] == label and r['metric'] == metric and
+                     r['median_delta'] is not None]
             x = [scenes.index(r['scenario']) + (j - .5) * .15 for r in group]
             y = np.array([r['median_delta'] for r in group])
             ax.errorbar(x, y, yerr=np.maximum(0, [y - [r['ci_low'] for r in group],

@@ -4,17 +4,17 @@ import math
 
 def support_contact(names, relative_heights, normal_z):
     """Support on a near-level floor; don't discard an entire school mesh."""
-    return (any(part in names for part in ('left_wheel', 'right_wheel', 'caster'))
-            and bool(relative_heights) and max(relative_heights) <= 0.035
-            and bool(normal_z) and all(abs(z) > 0.8 for z in normal_z))
+    return (any(part in names for part in ('left_wheel', 'right_wheel', 'caster')) and
+            bool(relative_heights) and max(relative_heights) <= 0.035 and
+            bool(normal_z) and all(abs(z) > 0.8 for z in normal_z))
 
 
 def interpolate_truth(history, stamp, max_gap=0.12):
     """Interpolate two bracketing truth samples; never treat stale data as truth."""
     for left, right in zip(history, history[1:]):
-        if left[0] <= stamp <= right[0] and 0 < right[0]-left[0] <= max_gap:
-            f=(stamp-left[0])/(right[0]-left[0])
-            return left[1]+f*(right[1]-left[1]), left[2]+f*(right[2]-left[2])
+        if left[0] <= stamp <= right[0] and 0 < right[0] - left[0] <= max_gap:
+            f = (stamp - left[0]) / (right[0] - left[0])
+            return left[1] + f * (right[1] - left[1]), left[2] + f * (right[2] - left[2])
     raise ValueError('No fresh bracketing obstacle truth samples')
 
 
@@ -52,7 +52,12 @@ class TrialMetrics:
 
     def result(self, outcome, terminal_time=None):
         end = terminal_time if terminal_time is not None else self.last[0] if self.last else None
-        duration = max(0., end-self.first) if end is not None and self.first is not None else 0.0
-        return dict(duration_s=duration, arrival_s=duration if outcome == 'success' else None,
-                    distance_m=self.distance, stopped_s=self.stopped,
-                    min_clearance_m=self.minimum, speed_variation_mps=self.speed_variation)
+        duration = max(0., end - self.first) if end is not None and self.first is not None else 0.0
+        return {
+            'duration_s': duration,
+            'arrival_s': duration if outcome == 'success' else None,
+            'distance_m': self.distance,
+            'stopped_s': self.stopped,
+            'min_clearance_m': self.minimum,
+            'speed_variation_mps': self.speed_variation,
+        }

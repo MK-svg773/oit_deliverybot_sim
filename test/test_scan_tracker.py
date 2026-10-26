@@ -3,9 +3,11 @@ import math
 from pathlib import Path
 import sys
 from types import SimpleNamespace as NS
+
 import numpy as np
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
-from scan_tracker_core import StaticMap, Tracker, detections  # noqa: E402
+from scan_tracker_core import detections, StaticMap, Tracker  # noqa: E402
 
 
 def test_synthetic_scans_remove_wall_and_estimate_velocity():
@@ -65,8 +67,9 @@ def test_ros_node_starts_and_preserves_scan_stamp():
             scan.angle_min = -.05
             scan.angle_increment = .01
             scan.range_min, scan.range_max = .1, 10.
-            scan.ranges = [3 * math.cos(-.05 + j * .01) - math.sqrt(.25 **
-                                                                    2 - 9 * math.sin(-.05 + j * .01)**2) for j in range(11)]
+            scan.ranges = [
+                3 * math.cos(-.05 + j * .01) - math.sqrt(.25**2 - 9 * math.sin(-.05 + j * .01)**2)
+                for j in range(11)]
             node.scans.append(scan)
             node.tick()
         assert len(output) == 3
@@ -76,8 +79,8 @@ def test_ros_node_starts_and_preserves_scan_stamp():
         assert [f.name for f in output[-1].fields] == ['x', 'y', 'vx', 'vy', 'radius']
         # Added latency starts after processing; publication must keep scan time.
         node.delay, node.noise = .5, .2
-        stamp = now-.1
-        scan.header.stamp = Time(sec=int(stamp), nanosec=int((stamp-int(stamp))*1e9))
+        stamp = now - .1
+        scan.header.stamp = Time(sec=int(stamp), nanosec=int((stamp - int(stamp)) * 1e9))
         node.scans.append(scan)
         node.tick()
         assert len(output) == 3
@@ -85,8 +88,8 @@ def test_ros_node_starts_and_preserves_scan_stamp():
         from sensor_msgs_py.point_cloud2 import read_points
         delayed = node.output[0][1]
         row = list(read_points(delayed))[0]
-        assert abs(float(row['vx']))+abs(float(row['vy'])) > .01
-        node.get_clock = lambda: NS(now=lambda: NS(nanoseconds=int((now+1)*1e9)))
+        assert abs(float(row['vx'])) + abs(float(row['vy'])) > .01
+        node.get_clock = lambda: NS(now=lambda: NS(nanoseconds=int((now + 1) * 1e9)))
         node.tick()
         assert len(output) == 4
         assert output[-1].header.stamp == scan.header.stamp

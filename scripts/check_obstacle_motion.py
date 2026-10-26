@@ -33,13 +33,13 @@ def check_batch(root):
                 t = float(row['time_s'])
                 segment_start, displacement = delay, 0.
                 for segment in segments:
-                    active = max(0., min(segment['duration'], t-segment_start))
-                    displacement += segment['speed']*active
+                    active = max(0., min(segment['duration'], t - segment_start))
+                    displacement += segment['speed'] * active
                     segment_start += segment['duration']
-                ex = obstacle['x']+math.cos(obstacle['yaw'])*displacement
-                ey = obstacle['y']+math.sin(obstacle['yaw'])*displacement
-                position_errors.append(math.hypot(float(row['obstacle_x_m'])-ex,
-                                                  float(row['obstacle_y_m'])-ey))
+                ex = obstacle['x'] + math.cos(obstacle['yaw']) * displacement
+                ey = obstacle['y'] + math.sin(obstacle['yaw']) * displacement
+                position_errors.append(math.hypot(float(row['obstacle_x_m']) - ex,
+                                                  float(row['obstacle_y_m']) - ey))
             max_position = max(position_errors, default=math.inf)
             errors = []
             for a, b in zip(rows, rows[1:]):
@@ -48,9 +48,9 @@ def check_batch(root):
                     continue
                 vx = (float(b['obstacle_x_m']) - float(a['obstacle_x_m'])) / (tb - ta)
                 vy = (float(b['obstacle_y_m']) - float(a['obstacle_y_m'])) / (tb - ta)
-                midpoint, speed, segment_start = (ta+tb)/2, 0., delay
+                midpoint, speed, segment_start = (ta + tb) / 2, 0., delay
                 for segment in segments:
-                    if segment_start <= midpoint < segment_start+segment['duration']:
+                    if segment_start <= midpoint < segment_start + segment['duration']:
                         speed = segment['speed']
                     segment_start += segment['duration']
                 errors.append(math.hypot(vx - speed * math.cos(obstacle['yaw']),

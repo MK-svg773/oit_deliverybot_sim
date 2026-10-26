@@ -5,7 +5,9 @@ import sys
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
-from simulation_metrics import clearance_to_circle, TrialMetrics, support_contact, interpolate_truth
+# Import the source scripts after adding their directory to the module path.
+from simulation_metrics import (  # noqa: E402
+    clearance_to_circle, interpolate_truth, support_contact, TrialMetrics)
 
 
 def test_floor_support_requires_normals_and_rejects_wall_or_body_contacts():
@@ -17,17 +19,19 @@ def test_floor_support_requires_normals_and_rejects_wall_or_body_contacts():
 
 
 def test_clearance_truth_is_interpolated_and_never_extrapolates_stale_data():
-    history=[(10.0,0.0,0.0),(10.1,1.0,2.0)]
-    assert interpolate_truth(history,10.05)==pytest.approx((0.5,1.0))
-    with pytest.raises(ValueError):interpolate_truth(history,10.2)
-    with pytest.raises(ValueError):interpolate_truth([(9.,0.,0.),(11.,1.,1.)],10.)
+    history = [(10.0, 0.0, 0.0), (10.1, 1.0, 2.0)]
+    assert interpolate_truth(history, 10.05) == pytest.approx((0.5, 1.0))
+    with pytest.raises(ValueError):
+        interpolate_truth(history, 10.2)
+    with pytest.raises(ValueError):
+        interpolate_truth([(9., 0., 0.), (11., 1., 1.)], 10.)
 
 
 def test_duration_includes_start_and_terminal_event_instead_of_sampling_window():
-    m=TrialMetrics(start_time=0.)
-    m.add(.1,0.,0.,0.,None)
-    m.add(1.1,1.,0.,.2,None)
-    assert m.result('success',terminal_time=1.25)['arrival_s']==1.25
+    m = TrialMetrics(start_time=0.)
+    m.add(.1, 0., 0., 0., None)
+    m.add(1.1, 1., 0., .2, None)
+    assert m.result('success', terminal_time=1.25)['arrival_s'] == 1.25
 
 
 def test_clearance_uses_asymmetric_rotated_footprint():

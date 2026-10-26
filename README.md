@@ -163,7 +163,7 @@ colcon test --packages-select oit_deliverybot_sim --return-code-on-test-failure
 colcon test-result --test-result-base build/oit_deliverybot_sim --verbose
 ```
 
-Pythonのpytest、C++のgtest、ament lintを実行します。既存コードにflake8 / pep257違反があり、lintを含む全テストは現状成功しません。
+Pythonのpytest、C++のgtest、ament lint（flake8 / pep257を含む）を実行します。
 走行評価には別途Gazeboでの実行が必要です。
 
 ## ライセンス・参考実装
