@@ -5,7 +5,7 @@ ROS 2 Jazzy + Gazebo Harmonic。実機ドライバは起動しない。
 
 ```bash
 source /opt/ros/jazzy/setup.bash
-source /home/ubuntu/ros2_ws/install/setup.bash
+source ~/ros2_ws/install/setup.bash
 ros2 launch oit_deliverybot_sim experiment.launch.py scenario:=crossing method:=dwb repeats:=3
 ```
 
@@ -19,11 +19,15 @@ ros2 launch oit_deliverybot_sim experiment.launch.py scenario:=crossing method:=
 全試行のresults.csvとcomparison.pngも生成する。成功・衝突・時間切れ・走行失敗・基盤異常・取消を区別する。
 基盤異常や記録された衝突を削除して成功率を計算しない。
 
-学校データの例（生成済みファイルが必要）：
+**学校データは非公開です。** 学校の地図・rosbag・点群・メッシュ・生成済みenvironment YAMLは本リポジトリに含みません。
+同梱の`corridor_map.pgm`は人工の平坦通路地図で、学校地図ではありません。
+`prepare_sim_school.py`は手元の2D地図を押し出す変換処理だけを提供し、入力データは配布しません。
+`prepare_sim_mesh.py`も入力点群を別途用意する必要があります。
+学校データを使う例（利用権限のある入力から生成済みのファイルが必要。公開コードの通路実験には不要）：
 
 ```bash
 ros2 launch oit_deliverybot_sim experiment.launch.py \
-  environment:=/home/ubuntu/ros2_ws/experiments/simulation/school/environment.yaml
+  environment:="$HOME/ros2_ws/experiments/simulation/school/environment.yaml"
 ```
 
 学校の既定環境は、同じGLIM出力からoit_map_toolsで作った2D地図を高さ1.5mに押し出した平面近似。
@@ -50,7 +54,7 @@ C1/C2は同じ追加critic・重み20・power 1・余裕0.25mを使い、`use_ve
 3条件は同じ`mppi.yaml`、costmap、外形、速度上限、smoother、既存criticを使う。
 開発seed=1でC0のclear/staticを確認し、基準MPPIのパラメータは変更していない。
 
-7場面は従来5場面と`stop_go`（進路付近で3秒停止→再発進）、`speed_change`（対向途中で減速）。
+7場面は従来5場面と`stop_go`（進路付近で2秒停止→再発進）、`speed_change`（対向途中で減速）。
 `scenarios.yaml`の`segments: [{speed: ..., duration: ...}, ...]`で区間速度を指定する。
 旧`speed/duration`形式は1区間として扱う。時刻は目標受付からのシミュレーション秒、区間は左閉右開。
 障害物座標は現在の実装ではworld/map座標（基本通路はロボット初期姿勢が原点）。

@@ -4,8 +4,8 @@
   <name>oit_deliverybot_sim</name>
   <version>0.0.0</version>
   <description>Gazebo navigation experiments with scan tracking and an MPPI obstacle critic.</description>
-  <maintainer email="5770105+KMiyawaki@users.noreply.github.com">ubuntu</maintainer>
-  <license>Proprietary</license>
+  <maintainer email="189582101+MK-svg773@users.noreply.github.com">Miki Kanato</maintainer>
+  <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
