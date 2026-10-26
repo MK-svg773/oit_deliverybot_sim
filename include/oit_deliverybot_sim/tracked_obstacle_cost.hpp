@@ -10,6 +10,13 @@ namespace oit_deliverybot_sim
 {
 struct FootprintPoint {double x, y;};
 
+// Keep model_dt as float, matching CriticData and the original C1/C2 arithmetic.
+inline double trackPredictionTime(
+  double age, size_t step, float model_dt, bool extrapolate_future = true)
+{
+  return extrapolate_future ? age + step * model_dt : age;
+}
+
 // Signed polygon-to-circle gap; negative means overlap, with no safety margin.
 inline double footprintCircleDistance(
   double x, double y, double yaw, double ox, double oy, double obstacle_radius,

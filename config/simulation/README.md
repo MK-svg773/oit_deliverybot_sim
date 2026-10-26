@@ -10,7 +10,7 @@ ros2 launch oit_deliverybot_sim experiment.launch.py scenario:=crossing method:=
 ```
 
 - `scenario`：`clear`、`static`、`crossing`、`following`、`oncoming`、`stop_go`、`speed_change`。カンマ区切り／`all`も可。
-- `method`：`dwb`、`mppi`、`mppi_pos`、`mppi_cv`。カンマ区切りも可。
+- `method`：`dwb`、`mppi`、`mppi_pos`、`mppi_cv`、`mppi_age`。カンマ区切りも可。
 - `gui:=true`でGazeboを表示。初期位置・目標はenvironmentのYAMLで指定する。
 - シナリオ内の障害物位置はworld/map座標。
 - `domain`は既定71。別端末から見るときも同じROS_DOMAIN_IDを設定する。
@@ -51,6 +51,8 @@ ros2 launch oit_deliverybot_sim experiment.launch.py \
 
 `mppi`=C0、`mppi_pos`=C1（追跡位置を静止とする）、`mppi_cv`=C2（等速予測）。
 C1/C2は同じ追加critic・重み20・power 1・余裕0.25mを使い、`use_velocity`だけを変える。
+追加条件`mppi_age`=C_ageは同じ設定で`use_velocity=true, extrapolate_future=false`とし、全ステップの時刻をageに固定する（既定trueは従来どおり）。
+`compare_methods.py --comparisons C1-C_age C_age-C2`で比較を選択する。差はC_age−C1、C2−C_age。省略時のC0/C1/C2比較は変わらない。
 3条件は同じ`mppi.yaml`、costmap、外形、速度上限、smoother、既存criticを使う。
 開発seed=1でC0のclear/staticを確認し、基準MPPIのパラメータは変更していない。
 
@@ -77,7 +79,7 @@ criticは追跡位置・速度をlocal costmap frame（`sim/odom`）へ変換し
 costmapのパディング済凸footprintを各時刻のyawで回転し、推定障害物円との符号付き距離を求める。
 余裕`safety_margin`未満の不足量を全時刻で平均し、`(weight * mean)^power`をコストへ加える。
 余裕を含めない距離が1時刻でも負なら、軌道へ一度だけ`collision_cost`（既定1000）も加える。
-C1は速度を0にし、C2だけ推定速度を使う。現在フレーム変換に失敗した場合はMPPIへ失敗を通知する。
+C1は速度を0にし、C2とC_ageは推定速度を使う。現在フレーム変換に失敗した場合はMPPIへ失敗を通知する。
 古い追跡点群（追加遅延+1秒を超えるもの）は使わない。
 2秒間隔の`Track prediction`ログに、変換先frame・age・現在／horizon位置を記録する。
 

@@ -22,12 +22,14 @@ def start(context):
     if method.startswith('mppi'):
         params['controller_server']['ros__parameters']['FollowPath'] = yaml.safe_load(
             (config / 'mppi.yaml').read_text())
-    if method in ('mppi_pos', 'mppi_cv'):
+    if method in ('mppi_pos', 'mppi_cv', 'mppi_age'):
         controller = params['controller_server']['ros__parameters']['FollowPath']
         controller['critics'].append('TrackedObstacleCritic')
         controller['TrackedObstacleCritic'] = {
-            'use_velocity': method == 'mppi_cv', 'cost_weight': 20.0, 'cost_power': 1,
+            'use_velocity': method != 'mppi_pos', 'cost_weight': 20.0, 'cost_power': 1,
             'safety_margin': 0.25, 'max_track_age': delay + 1.0}
+        if method == 'mppi_age':
+            controller['TrackedObstacleCritic']['extrapolate_future'] = False
     params['amcl']['ros__parameters']['initial_pose'] = {
         'x': env['start'][0], 'y': env['start'][1], 'z': 0., 'yaw': env['start'][3]}
     map_file = Path(env['map']).expanduser()
@@ -72,7 +74,7 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('environment', default_value=str(config / 'corridor.yaml')),
         DeclareLaunchArgument('method', default_value='dwb', choices=[
-                              'dwb', 'mppi', 'mppi_pos', 'mppi_cv']),
+                              'dwb', 'mppi', 'mppi_pos', 'mppi_cv', 'mppi_age']),
         DeclareLaunchArgument('additional_delay', default_value='0.0'),
         DeclareLaunchArgument('velocity_noise_std', default_value='0.0'),
         OpaqueFunction(function=start)])

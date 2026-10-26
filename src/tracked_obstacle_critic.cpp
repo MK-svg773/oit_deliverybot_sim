@@ -29,6 +29,7 @@ public:
     get(margin_, "safety_margin", 0.25);
     get(collision_cost_, "collision_cost", 1000.0);
     get(use_velocity_, "use_velocity", false);
+    get(extrapolate_future_, "extrapolate_future", true);
     get(max_age_, "max_track_age", 1.0);
     if (weight_ < 0 || power_ < 1 || margin_ < 0 || max_age_ <= 0 || collision_cost_ < 0) {
       throw std::runtime_error("Invalid TrackedObstacleCritic parameters");
@@ -118,7 +119,8 @@ public:
       oit_deliverybot_sim::ObstacleTrajectoryCost cost;
       for (size_t j = 0; j < steps; ++j) {
         double nearest = std::numeric_limits<double>::infinity();
-        const double time = age + (j + 1) * data.model_dt;
+        const double time = oit_deliverybot_sim::trackPredictionTime(
+          age, j + 1, data.model_dt, extrapolate_future_);
         for (const auto & obstacle : obstacles) {
           nearest = std::min(nearest, oit_deliverybot_sim::footprintCircleDistance(
                 data.trajectories.x(i, j), data.trajectories.y(i, j),
@@ -132,12 +134,13 @@ public:
     }
     if (!obstacles.empty()) {
       const auto & o = obstacles.front();
+      const double horizon = oit_deliverybot_sim::trackPredictionTime(
+        age, steps, data.model_dt, extrapolate_future_);
       RCLCPP_INFO_THROTTLE(logger_, *node->get_clock(), 2000,
         "Track prediction velocity=%s %s->%s age=%.3f now=(%.2f,%.2f) horizon=(%.2f,%.2f)",
         use_velocity_ ? "on" : "off", cloud->header.frame_id.c_str(), frame.c_str(), age,
         o.x + o.vx * age, o.y + o.vy * age,
-        o.x + o.vx * (age + steps * data.model_dt),
-        o.y + o.vy * (age + steps * data.model_dt));
+        o.x + o.vx * horizon, o.y + o.vy * horizon);
     }
   }
 
@@ -145,6 +148,7 @@ private:
   double weight_{20}, margin_{0.25}, max_age_{1}, collision_cost_{1000};
   int power_{1};
   bool use_velocity_{false};
+  bool extrapolate_future_{true};
   std::mutex mutex_;
   sensor_msgs::msg::PointCloud2::ConstSharedPtr tracks_;
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr subscription_;

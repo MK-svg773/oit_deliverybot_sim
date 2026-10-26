@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare paired C0/C1/C2 trials without excluding unsuccessful navigation."""
+"""Compare paired MPPI trials without excluding unsuccessful navigation."""
 import argparse
 from collections import Counter
 import csv
@@ -14,7 +14,13 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt  # noqa: E402, I100
 
 METHODS = ('mppi', 'mppi_pos', 'mppi_cv')
-COMPARISONS = (('C1-C2', 'mppi_pos'), ('C0-C2', 'mppi'))
+DEFAULT_COMPARISONS = ('C1-C2', 'C0-C2')
+COMPARISONS = {
+    'C1-C2': ('mppi_pos', 'mppi_cv'),
+    'C0-C2': ('mppi', 'mppi_cv'),
+    'C1-C_age': ('mppi_pos', 'mppi_age'),
+    'C_age-C2': ('mppi_age', 'mppi_cv'),
+}
 METRICS = ('success', 'collision', 'arrival_s', 'stopped_s', 'min_clearance_m')
 
 
@@ -72,7 +78,7 @@ def holm(p_values):
 
 
 def continuous_test(differences):
-    """Test C2 minus comparator; percentile bootstrap of paired median differences."""
+    """Test paired differences with a percentile bootstrap of their median."""
     d = np.round(np.asarray(differences, dtype=float), 12)
     if not len(d):
         return {
@@ -111,8 +117,12 @@ def continuous_test(differences):
     }
 
 
-def analyze(rows):
+def analyze(rows, comparisons=DEFAULT_COMPARISONS):
     """Summarize all outcomes and test seed-matched scenario pairs."""
+    comparisons = tuple(comparisons)
+    legacy = comparisons == DEFAULT_COMPARISONS
+    methods = METHODS if legacy else tuple(dict.fromkeys(
+        method for label in comparisons for method in COMPARISONS[label]))
     indexed = {key(r): r for r in rows}
     if len(indexed) != len(rows):
         raise ValueError('Duplicate scenario/method/seed')
@@ -120,7 +130,7 @@ def analyze(rows):
     summary, tests = [], []
     for scene in scenes:
         seeds = {int(r['seed']) for r in rows if r['scenario'] == scene}
-        for method in METHODS:
+        for method in methods:
             group = [r for r in rows if r['scenario'] == scene and r['method'] == method]
             if {int(r['seed']) for r in group} != seeds:
                 raise ValueError(f'Unmatched seed sets: {scene}/{method}')
@@ -141,8 +151,9 @@ def analyze(rows):
                 'wilson_low': ci.low,
                 'wilson_high': ci.high,
             })
-        for label, method in COMPARISONS:
-            pairs = [(indexed[scene, method, seed], indexed[scene, 'mppi_cv', seed])
+        for label in comparisons:
+            method, target = COMPARISONS[label]
+            pairs = [(indexed[scene, method, seed], indexed[scene, target, seed])
                      for seed in sorted(seeds)]
             for metric in METRICS:
                 result = {
@@ -153,7 +164,7 @@ def analyze(rows):
                     'n': 0,
                     'missing_pairs': 0,
                     'a_only': None,
-                    'c2_only': None,
+                    'c2_only' if legacy else 'b_only': None,
                     'median_delta': None,
                     'ci_low': None,
                     'ci_high': None,
@@ -162,13 +173,16 @@ def analyze(rows):
                     'p_holm': None,
                     'test_method': '',
                 }
+                if not legacy:
+                    result['delta_direction'] = f'{target} - {method}'
                 if metric in ('success', 'collision'):
                     a_only = sum(a['outcome'] == metric and b['outcome'] != metric
                                  for a, b in pairs)
                     b_only = sum(a['outcome'] != metric and b['outcome'] == metric
                                  for a, b in pairs)
                     discordant = a_only + b_only
-                    result.update(n=len(pairs), a_only=a_only, c2_only=b_only,
+                    result['c2_only' if legacy else 'b_only'] = b_only
+                    result.update(n=len(pairs), a_only=a_only,
                                   statistic=min(a_only, b_only),
                                   p_value=(stats.binomtest(a_only, discordant).pvalue
                                            if discordant else 1.),
@@ -189,7 +203,7 @@ def analyze(rows):
                     result.update(continuous_test(differences))
                     result['missing_pairs'] = len(pairs) - result['n']
                 tests.append(result)
-    for label, _ in COMPARISONS:
+    for label in comparisons:
         for metric in METRICS:
             family = [r for r in tests if r['comparison'] == label and r['metric'] == metric]
             for row, corrected in zip(family, holm([r['p_value'] for r in family])):
@@ -219,6 +233,9 @@ def write_csv(path, rows):
 
 def write_outputs(rows, summary, tests, output):
     """Write inference, plots and existing controller timing evidence."""
+    methods = list(dict.fromkeys(r['method'] for r in summary))
+    comparisons = list(dict.fromkeys(r['comparison'] for r in tests))
+    legacy = 'c2_only' in tests[0]
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
     write_csv(output / 'results.csv', rows)
@@ -232,16 +249,22 @@ def write_outputs(rows, summary, tests, output):
              '中央値95%区間は対応差を10000回再標本化するpercentile bootstrap（乱数0）。'
              '1組の区間は退化し推論には不十分。\n'
              'Holmは比較方式×指標ごとに全場面数で補正。欠測場面もp=1相当で枠を保持。\n')
+    if not legacy:
+        directions = '、'.join(
+            f'{label}: {label.split("-")[1]}−{label.split("-")[0]}' for label in comparisons)
+        notes = notes.replace('差はC2−比較方式。', f'差は比較名A-BのB−A（{directions}）。')
+        notes = notes.replace('a_onlyは比較方式だけ該当、c2_onlyはC2だけ該当。',
+                              'a_onlyはAだけ該当、b_onlyはBだけ該当。')
     (output / 'tables.md').write_text(notes + '\n' + table(summary) + '\n\n' + table(tests) + '\n')
     scenes = list(dict.fromkeys(r['scenario'] for r in summary))
     fig, ax = plt.subplots(figsize=(11, 5), layout='constrained')
-    for j, method in enumerate(METHODS):
+    for j, method in enumerate(methods):
         values = [next(r for r in summary if r['scenario'] == s and r['method'] == method)
                   for s in scenes]
         rates = np.array([r['success_rate'] for r in values])
         low = np.array([r['wilson_low'] for r in values])
         high = np.array([r['wilson_high'] for r in values])
-        ax.errorbar(np.arange(len(scenes)) + (j - 1) * .16, rates,
+        ax.errorbar(np.arange(len(scenes)) + (j - (len(methods) - 1) / 2) * .16, rates,
                     yerr=np.maximum(0, [rates - low, high - rates]),
                     fmt='o', capsize=3, label=method)
     ax.set(xticks=range(len(scenes)), xticklabels=scenes, ylim=(-.05, 1.05),
@@ -252,17 +275,19 @@ def write_outputs(rows, summary, tests, output):
     plt.close(fig)
     fig, axes = plt.subplots(3, 1, figsize=(11, 10), layout='constrained')
     for ax, metric in zip(axes, METRICS[2:]):
-        for j, (label, _) in enumerate(COMPARISONS):
+        for j, label in enumerate(comparisons):
             group = [r for r in tests if r['comparison'] == label and r['metric'] == metric and
                      r['median_delta'] is not None]
-            x = [scenes.index(r['scenario']) + (j - .5) * .15 for r in group]
+            x = [scenes.index(r['scenario']) + (j - (len(comparisons) - 1) / 2) * .15
+                 for r in group]
             y = np.array([r['median_delta'] for r in group])
             ax.errorbar(x, y, yerr=np.maximum(0, [y - [r['ci_low'] for r in group],
                                                   [r['ci_high'] for r in group] - y]),
                         fmt='o', capsize=3, label=label)
         ax.axhline(0, color='grey', linewidth=1)
+        direction = 'C2 - comparator' if legacy else 'B - A'
         ax.set(xticks=range(len(scenes)), xticklabels=scenes,
-               ylabel=f'{metric}\nmedian C2 - comparator (95% CI)')
+               ylabel=f'{metric}\nmedian {direction} (95% CI)')
         ax.legend()
         ax.grid(alpha=.25)
     fig.savefig(output / 'differences.png', dpi=160)
@@ -288,7 +313,7 @@ def write_outputs(rows, summary, tests, output):
     if timing:
         write_csv(output / 'control_timing.csv', timing)
         aggregates = []
-        for method in METHODS:
+        for method in methods:
             group = [r for r in timing if r['method'] == method]
             rtfs = [float(r['real_time_factor']) for r in group if r['real_time_factor']]
             aggregates.append({
@@ -310,9 +335,12 @@ def main():
     parser.add_argument('results', type=Path)
     parser.add_argument('--replacements', type=Path)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--comparisons', nargs='+', choices=COMPARISONS,
+                        default=DEFAULT_COMPARISONS,
+                        help='Comparison labels A-B; differences are B minus A')
     args = parser.parse_args()
     rows = load_results(args.results, args.replacements)
-    summary, tests = analyze(rows)
+    summary, tests = analyze(rows, args.comparisons)
     write_outputs(rows, summary, tests, args.output)
     print(f'{len(rows)} trials; outputs: {args.output}')
 

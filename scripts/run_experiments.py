@@ -517,7 +517,7 @@ def main():
     parser.add_argument('--environment', type=Path, required=True)
     parser.add_argument('--scenario', default='clear', help='Comma-separated names, or all')
     parser.add_argument('--method', default='mppi',
-                        help='Comma-separated: dwb,mppi,mppi_pos,mppi_cv')
+                        help='Comma-separated: dwb,mppi,mppi_pos,mppi_cv,mppi_age')
     parser.add_argument('--seed', type=int, default=1)
     parser.add_argument('--seed_set', choices=['development', 'final'], default='development')
     parser.add_argument('--additional_delay', type=float, default=0.)
@@ -538,7 +538,7 @@ def main():
     methods = args.method.split(',')
     if (args.repeats < 1 or args.wall_timeout <= 0 or
             any(k not in available for k in scenarios) or
-            any(k not in ('dwb', 'mppi', 'mppi_pos', 'mppi_cv') for k in methods)):
+            any(k not in ('dwb', 'mppi', 'mppi_pos', 'mppi_cv', 'mppi_age') for k in methods)):
         parser.error('Invalid repeats, timeout, scenario or method')
     low, high = available['_variation'][args.seed_set + '_seeds']
     if not low <= args.seed <= args.seed + args.repeats - 1 <= high:
