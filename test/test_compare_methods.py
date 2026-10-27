@@ -137,6 +137,15 @@ def test_age_pairing_direction_and_holm():
         compare.analyze(rows + rows[:1], comparisons=('C1-C_age', 'C_age-C2'))
 
 
+def test_calibrated_margin_comparisons():
+    """Pair C2u against C2 and C1 with C2u as the delta target."""
+    rows = [dict(r, method={'mppi_age': 'mppi_cvu', 'mppi_cv': 'mppi_cv'}.get(
+        r['method'], r['method'])) for r in age_rows()]
+    _, tests = compare.analyze(rows, comparisons=('C2-C2u', 'C1-C2u'))
+    assert {r['delta_direction'] for r in tests} == {
+        'mppi_cvu - mppi_cv', 'mppi_cvu - mppi_pos'}
+
+
 def test_age_comparison_cli_outputs(tmp_path):
     """Exercise selection, CSV direction labels and plots through the real CLI."""
     source = tmp_path / 'input.csv'

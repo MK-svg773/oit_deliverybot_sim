@@ -20,6 +20,8 @@ COMPARISONS = {
     'C0-C2': ('mppi', 'mppi_cv'),
     'C1-C_age': ('mppi_pos', 'mppi_age'),
     'C_age-C2': ('mppi_age', 'mppi_cv'),
+    'C2-C2u': ('mppi_cv', 'mppi_cvu'),
+    'C1-C2u': ('mppi_pos', 'mppi_cvu'),
 }
 METRICS = ('success', 'collision', 'arrival_s', 'stopped_s', 'min_clearance_m')
 
