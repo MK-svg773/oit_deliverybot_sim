@@ -135,6 +135,7 @@ def start_simulation(context):
         RegisterEventHandler(OnShutdown(on_shutdown=[OpaqueFunction(function=cleanup)])),
         ExecuteProcess(cmd=cmd, output='screen', on_exit=Shutdown()),
         Node(package='ros_gz_bridge', executable='parameter_bridge', name='sim_bridge',
+             additional_env={'FASTRTPS_DEFAULT_PROFILES_FILE': str(config / 'fastdds.xml')},
              parameters=[{'config_file': str(config / 'bridge.yaml'), 'use_sim_time': True}]),
         Node(package='tf2_ros', executable='static_transform_publisher', name='sim_lidar_tf',
              arguments=['--x', '-0.12', '--y', '0', '--z', '0.6374',
