@@ -29,12 +29,58 @@ C++の追加criticは、候補軌道の各時刻における車体footprintと�
 | C1 | `mppi_pos` | C0＋追跡位置・半径を静止物として評価 |
 | C2 | `mppi_cv` | C1と同じcriticで推定速度を使い等速予測 |
 | C_age | `mppi_age` | 推定速度で観測時刻から現在まで補償し、その位置を全予測ステップで固定 |
+| C2u | `mppi_cvu` | C2のsoft安全余裕へ、開発記録で校正した時間別の位置予測残差分位点を加算 |
 
 C1/C2は速度利用フラグ以外の追加critic設定を共通化します。主比較はC1対C2、副比較はC0対C2です。
 C2には観測時刻から現在までの遅れの補償も含まれます。追加条件C_ageは、以下の掲載結果には含まれません。
 `compare_methods.py --comparisons C1-C_age C_age-C2`で遅れ補償と将来外挿を分けて比較します（差は後者−前者）。
 全方式でcostmap、車体外形、速度上限、smootherを共通にし、追跡器も起動します。
 標準ObstacleLayerにも観測を保持する仕組みがあるため、比較の差分は「動き情報の利用」です。
+
+### C2uのオフライン校正
+
+C2uは実装・単体検証段階で、走行性能は未評価です。追跡器と等速予測を保ち、
+予測ステップ`k=1..time_steps`のsoft余裕だけを`safety_margin + prediction_margins[k-1]`にします。
+物理的重なりの判定と`collision_cost`は変えません。全要素0ならC2と同じ採点になります。
+テーブルは初期化時に読み込み、変更には再起動が必要です。
+
+開発試行の`results.csv`を渡すと、各行の`output`が指す試行ディレクトリから
+`tracking_errors.csv`と`samples.csv`を読みます。例の分位点0.9は操作例で、既定値・評価条件ではありません。
+
+```bash
+ros2 run oit_deliverybot_sim calibrate_prediction_margin.py \
+  /path/to/development_batch/results.csv \
+  --quantile 0.9 --time-steps 32 --model-dt 0.1 --output /path/to/margin.yaml
+```
+
+分位点は必須引数です。NumPyの`inverted_cdf`（経験分布の逆CDF）を使い、
+時刻ごとに`ceil(n*q)`番目の残差ノルムを採ります。上限クリップや単調化はしません。
+同じノイズ・追加遅延・環境の開発seed 1–999だけを入力でき、最終seedと重複試行は拒否します。
+衝突・時間切れ・navigation_failureは含め、infrastructure_error/cancelledは除外件数を記録します。
+出力YAMLは`time_steps`、`model_dt`、double配列`prediction_margins`、
+校正に使ったseed集合・試行・時間別件数・除外件数を含みます。
+
+校正後、実験条件を固定してから起動する例（テーブルはC2uにだけ適用）：
+
+```bash
+ros2 launch oit_deliverybot_sim experiment.launch.py \
+  scenario:=following method:=mppi_cv,mppi_cvu calibration_file:=/path/to/margin.yaml
+```
+
+校正テーブルなし・長さ/時間刻み不一致・負値/非有限値はエラーになります。
+真値や校正メタデータをcriticに渡さず、読み込むパラメータは固定の余裕配列だけです。
+ノイズ設定による自動テーブル切替は行いません。
+
+校正の予測は、ノイズ付加後の出力位置・速度から`age_s + k*dt`先を計算し、
+`time_s + age_s + k*dt`の記録真値と比較します。予定位置/速度は使いません。
+真値は既定0.12秒以内の区間で補間し、欠測区間や試行終了後へ外挿しません。
+あるステップに残差が1件もなければ出力を拒否します。
+
+`age_s`は採点側の処理時刻での値であり、実際のcritic採点時刻との差は未計測です。
+既存CSVは単一円柱へ1m以内で対応したtrackだけを記録するため、未対応・誤検出への被覆は評価できません。
+これは連続フレームの経験的な周辺分位点であり、conformal被覆保証や全走行の安全保証ではありません。
+校正と最終評価のseedは分離し、余裕の拡大による停止・到達率の悪化も評価します。
+`compare_methods.py`のC2u比較名は未追加です。比較条件の固定と集計対応は後続作業です。
 
 ## 実験規模と主な結果
 

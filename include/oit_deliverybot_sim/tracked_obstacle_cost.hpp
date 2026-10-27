@@ -4,11 +4,23 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <stdexcept>
 #include <vector>
 
 namespace oit_deliverybot_sim
 {
 struct FootprintPoint {double x, y;};
+
+// An empty table keeps the legacy methods; a supplied table covers the entire horizon.
+inline void validatePredictionMargins(const std::vector<double> & margins, size_t steps)
+{
+  if ((!margins.empty() && margins.size() != steps) ||
+    std::any_of(margins.begin(), margins.end(), [](double r) {return !std::isfinite(r) || r < 0;}))
+  {
+    throw std::invalid_argument(
+        "prediction_margins must have time_steps finite nonnegative values");
+  }
+}
 
 // Keep model_dt as float, matching CriticData and the original C1/C2 arithmetic.
 inline double trackPredictionTime(
@@ -49,8 +61,10 @@ struct ObstacleTrajectoryCost
   double shortage_sum{0};
   bool collision{false};
 
-  void addStep(double distance, double margin)
+  void addStep(double distance, double margin, double prediction_margin = 0.0)
   {
+    // Preserve the old arithmetic exactly for both omitted and all-zero tables.
+    if (prediction_margin != 0.0) {margin += prediction_margin;}
     shortage_sum += std::max(0.0, margin - distance);
     collision |= distance < 0;
   }

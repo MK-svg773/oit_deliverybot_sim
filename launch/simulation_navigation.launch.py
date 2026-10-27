@@ -1,4 +1,5 @@
 """AMCL and standard Nav2 controllers, with one shared final command publisher."""
+import math
 from pathlib import Path
 import tempfile
 
@@ -11,18 +12,13 @@ from launch_ros.actions import Node
 import yaml
 
 
-def start(context):
-    config = Path(get_package_share_directory('oit_deliverybot_sim')) / 'config/simulation'
-    env_path = Path(LaunchConfiguration('environment').perform(context)).expanduser().resolve()
-    env = yaml.safe_load(env_path.read_text())
+def navigation_parameters(config, method, delay, calibration_file=''):
+    """Keep baseline parameters intact and require a matching table for C2u."""
     params = yaml.safe_load((config / 'nav2.yaml').read_text())
-    method = LaunchConfiguration('method').perform(context)
-    delay = float(LaunchConfiguration('additional_delay').perform(context))
-    noise = float(LaunchConfiguration('velocity_noise_std').perform(context))
     if method.startswith('mppi'):
         params['controller_server']['ros__parameters']['FollowPath'] = yaml.safe_load(
             (config / 'mppi.yaml').read_text())
-    if method in ('mppi_pos', 'mppi_cv', 'mppi_age'):
+    if method in ('mppi_pos', 'mppi_cv', 'mppi_age', 'mppi_cvu'):
         controller = params['controller_server']['ros__parameters']['FollowPath']
         controller['critics'].append('TrackedObstacleCritic')
         controller['TrackedObstacleCritic'] = {
@@ -30,6 +26,34 @@ def start(context):
             'safety_margin': 0.25, 'max_track_age': delay + 1.0}
         if method == 'mppi_age':
             controller['TrackedObstacleCritic']['extrapolate_future'] = False
+        if method == 'mppi_cvu':
+            if not calibration_file:
+                raise ValueError('mppi_cvu requires calibration_file')
+            table = yaml.safe_load(Path(calibration_file).expanduser().read_text())
+            if (not isinstance(table, dict) or
+                    table.get('time_steps') != controller['time_steps'] or
+                    table.get('model_dt') != controller['model_dt']):
+                raise ValueError('calibration time_steps/model_dt must match MPPI')
+            margins = table.get('prediction_margins')
+            if (not isinstance(margins, list) or len(margins) != controller['time_steps'] or
+                    any(type(r) not in (float, int) or not math.isfinite(r) or r < 0
+                        for r in margins)):
+                raise ValueError(
+                    'prediction_margins must contain time_steps finite nonnegative values')
+            # Only the fixed double array reaches the critic; calibration labels stay offline.
+            controller['TrackedObstacleCritic']['prediction_margins'] = [float(r) for r in margins]
+    return params
+
+
+def start(context):
+    config = Path(get_package_share_directory('oit_deliverybot_sim')) / 'config/simulation'
+    env_path = Path(LaunchConfiguration('environment').perform(context)).expanduser().resolve()
+    env = yaml.safe_load(env_path.read_text())
+    method = LaunchConfiguration('method').perform(context)
+    delay = float(LaunchConfiguration('additional_delay').perform(context))
+    noise = float(LaunchConfiguration('velocity_noise_std').perform(context))
+    calibration_file = LaunchConfiguration('calibration_file').perform(context)
+    params = navigation_parameters(config, method, delay, calibration_file)
     params['amcl']['ros__parameters']['initial_pose'] = {
         'x': env['start'][0], 'y': env['start'][1], 'z': 0., 'yaw': env['start'][3]}
     map_file = Path(env['map']).expanduser()
@@ -74,7 +98,8 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('environment', default_value=str(config / 'corridor.yaml')),
         DeclareLaunchArgument('method', default_value='dwb', choices=[
-                              'dwb', 'mppi', 'mppi_pos', 'mppi_cv', 'mppi_age']),
+                              'dwb', 'mppi', 'mppi_pos', 'mppi_cv', 'mppi_age', 'mppi_cvu']),
+        DeclareLaunchArgument('calibration_file', default_value=''),
         DeclareLaunchArgument('additional_delay', default_value='0.0'),
         DeclareLaunchArgument('velocity_noise_std', default_value='0.0'),
         OpaqueFunction(function=start)])

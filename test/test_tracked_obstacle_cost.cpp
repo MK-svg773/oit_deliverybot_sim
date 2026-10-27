@@ -109,3 +109,48 @@ TEST(TrackedObstacleCost, AgeCompensationHoldsCurrentPositionAtEveryStep)
     }
   }
 }
+
+TEST(TrackedObstacleCost, ZeroCalibratedMarginsAreBitIdenticalToC2)
+{
+  const std::vector<double> margins(32, 0.0);
+  for (double age : {0.0, .17, .93}) {
+    for (int power : {1, 2}) {
+      ObstacleTrajectoryCost c2, c2u;
+      for (size_t j = 0; j < margins.size(); ++j) {
+        const double time = oit_deliverybot_sim::trackPredictionTime(age, j + 1, .1f);
+        const double gap = footprintCircleDistance(
+          .02 * j, -.03, .07 * j, 1.2 - .5 * time, .2, .25, footprint);
+        c2.addStep(gap, .25);
+        c2u.addStep(gap, .25, margins[j]);
+        EXPECT_EQ(std::memcmp(&c2.shortage_sum, &c2u.shortage_sum, sizeof(double)), 0);
+        EXPECT_EQ(c2.collision, c2u.collision);
+      }
+      const double a = c2.score(32, 20, power, 1000);
+      const double b = c2u.score(32, 20, power, 1000);
+      EXPECT_EQ(std::memcmp(&a, &b, sizeof(double)), 0);
+    }
+  }
+}
+
+TEST(TrackedObstacleCost, CalibratedMarginOnlyIncreasesSoftShortage)
+{
+  ObstacleTrajectoryCost cost;
+  cost.addStep(.4, .25, .3);  // shortage .15, no physical overlap
+  cost.addStep(.4, .25, .5);  // shortage .35 at the second horizon
+  EXPECT_FALSE(cost.collision);
+  EXPECT_NEAR(cost.score(2, 20, 1, 1000), 5., 1e-12);
+  cost.addStep(-.1, .25, .2);
+  EXPECT_TRUE(cost.collision);
+  EXPECT_NEAR(cost.score(3, 20, 1, 1000), 1007., 1e-12);
+}
+
+TEST(TrackedObstacleCost, CalibrationRejectsBadLengthNegativeAndNonfiniteValues)
+{
+  using oit_deliverybot_sim::validatePredictionMargins;
+  EXPECT_NO_THROW(validatePredictionMargins({}, 32));  // old methods
+  EXPECT_NO_THROW(validatePredictionMargins({0., .2}, 2));
+  EXPECT_THROW(validatePredictionMargins({.2}, 2), std::invalid_argument);
+  EXPECT_THROW(validatePredictionMargins({-.1}, 1), std::invalid_argument);
+  EXPECT_THROW(validatePredictionMargins({INFINITY}, 1), std::invalid_argument);
+  EXPECT_THROW(validatePredictionMargins({NAN}, 1), std::invalid_argument);
+}

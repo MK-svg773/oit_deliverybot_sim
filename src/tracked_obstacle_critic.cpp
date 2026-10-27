@@ -31,6 +31,7 @@ public:
     get(use_velocity_, "use_velocity", false);
     get(extrapolate_future_, "extrapolate_future", true);
     get(max_age_, "max_track_age", 1.0);
+    get(prediction_margins_, "prediction_margins", std::vector<double>{}, ParameterType::Static);
     if (weight_ < 0 || power_ < 1 || margin_ < 0 || max_age_ <= 0 || collision_cost_ < 0) {
       throw std::runtime_error("Invalid TrackedObstacleCritic parameters");
     }
@@ -38,6 +39,14 @@ public:
       throw std::runtime_error("TrackedObstacleCritic requires a convex polygon footprint");
     }
     auto node = parent_.lock();
+    if (!prediction_margins_.empty()) {
+      if (!use_velocity_ || !extrapolate_future_) {
+        throw std::runtime_error("prediction_margins requires constant-velocity future prediction");
+      }
+      const auto steps = node->get_parameter(parent_name_ + ".time_steps").as_int();
+      oit_deliverybot_sim::validatePredictionMargins(prediction_margins_, steps);
+      calibrated_model_dt_ = node->get_parameter(parent_name_ + ".model_dt").as_double();
+    }
     subscription_ = node->create_subscription<sensor_msgs::msg::PointCloud2>(
       "/sim/obstacle_tracks", rclcpp::QoS(10),
       [this](sensor_msgs::msg::PointCloud2::ConstSharedPtr msg) {
@@ -110,6 +119,14 @@ public:
     }
     const size_t steps = data.trajectories.x.shape(1);
     if (!steps) {return;}
+    if (!prediction_margins_.empty() &&
+      (prediction_margins_.size() != steps || data.model_dt != calibrated_model_dt_ ||
+      !use_velocity_ || !extrapolate_future_))
+    {
+      RCLCPP_ERROR(logger_, "Calibration no longer matches the CV prediction horizon");
+      data.fail_flag = true;
+      return;
+    }
     std::vector<oit_deliverybot_sim::FootprintPoint> footprint;
     for (const auto & p : costmap_ros_->getRobotFootprint()) {
       footprint.push_back({p.x, p.y});
@@ -128,7 +145,7 @@ public:
                 obstacle.x + obstacle.vx * time, obstacle.y + obstacle.vy * time,
                 obstacle.radius, footprint));
         }
-        cost.addStep(nearest, margin_);
+        cost.addStep(nearest, margin_, prediction_margins_.empty() ? 0.0 : prediction_margins_[j]);
       }
       data.costs(i) += cost.score(steps, weight_, power_, collision_cost_);
     }
@@ -149,6 +166,8 @@ private:
   int power_{1};
   bool use_velocity_{false};
   bool extrapolate_future_{true};
+  std::vector<double> prediction_margins_;
+  float calibrated_model_dt_{0};
   std::mutex mutex_;
   sensor_msgs::msg::PointCloud2::ConstSharedPtr tracks_;
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr subscription_;
