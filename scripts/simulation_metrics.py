@@ -61,3 +61,98 @@ class TrialMetrics:
             'min_clearance_m': self.minimum,
             'speed_variation_mps': self.speed_variation,
         }
+
+
+def post_clearance_metrics(rows, environment, obstacle, terminal_time):
+    """
+    Score crossing exit from sampled truth only, without extrapolating beyond a trial.
+
+    The lane is the straight start-goal centreline swept by the 0.44 m wide body,
+    enlarged by a fixed margin. Exit is the first fresh sample fully beyond the
+    exit side, not an interpolated or scheduled timestamp. Sample speeds
+    represent their following interval, as in TrialMetrics. Gaps over 0.15 s are
+    missing; restart requires a continuously observed hold inside the post window.
+    """
+    settings = obstacle.get('post_clearance') if obstacle else None
+    result = {
+        't_clear_status': 'not_applicable', 't_clear_s': None, 'w_post_s': None,
+        'post_observed_s': None, 'post_missing_s': None, 'post_stopped_s': None,
+        'post_window_complete': False, 'restart_category': 'not_applicable',
+        'restart_delay_s': None, 'restart_observed_s': None,
+    }
+    if not settings:
+        return result
+    window, hold = settings['window_s'], settings['hold_s']
+    result.update(t_clear_status='not_observed', w_post_s=window,
+                  restart_category='clear_not_observed')
+    sx, sy = environment['start'][:2]
+    gx, gy = environment['goal'][:2]
+    length = math.hypot(gx - sx, gy - sy)
+
+    def lateral(x, y):
+        return ((gx - sx) * (y - sy) - (gy - sy) * (x - sx)) / length
+
+    # The initial circle can already be inside the lane; heading defines the exit side.
+    across = (gx - sx) * math.sin(obstacle['yaw']) - (gy - sy) * math.cos(obstacle['yaw'])
+    direction = 1. if across > 0 else -1.
+    edge = .22 + settings['margin_m'] + environment['obstacle_radius']
+    samples = [(float(row['time_s']), float(row['speed_mps']),
+                direction * lateral(float(row['obstacle_x_m']), float(row['obstacle_y_m'])))
+               for row in rows if float(row['time_s']) <= terminal_time]
+    max_gap = .15
+    clear_index = None
+    for i, sample in enumerate(samples):
+        if sample[2] <= edge:
+            continue
+        if (i == 0 or not 0 < sample[0] - samples[i - 1][0] <= max_gap or
+                not all(math.isfinite(v) for v in (*sample, *samples[i - 1]))):
+            result['t_clear_status'] = 'missing_samples'
+            return result
+        clear_index = i
+        break
+    if clear_index is None:
+        return result
+    if any(sample[2] <= edge for sample in samples[clear_index + 1:]):
+        result['t_clear_status'] = 'reentered'
+        return result
+    t_clear, speed, _ = samples[clear_index]
+    end = min(t_clear + window, terminal_time, samples[-1][0])
+    observed = stopped = 0.
+    moving_since = None
+    restart = None
+    missing_before_restart = False
+    for left, right in zip(samples[clear_index:], samples[clear_index + 1:]):
+        a, b = max(t_clear, left[0]), min(end, right[0])
+        if b <= a:
+            continue
+        if (right[0] - left[0] > max_gap or
+                not all(math.isfinite(v) for v in (*left, *right))):
+            moving_since = None
+            if restart is None:
+                missing_before_restart = True
+            continue
+        observed += b - a
+        if left[1] < environment['stop_speed']:
+            stopped += b - a
+            moving_since = None
+        else:
+            moving_since = a if moving_since is None else moving_since
+            if restart is None and b - moving_since >= hold - 1e-9:
+                restart = moving_since - t_clear
+    complete = observed >= window - 1e-9
+    if speed >= environment['stop_speed']:
+        category = 'already_moving'
+        restart = None
+    elif missing_before_restart:
+        category = 'missing_samples'
+        restart = None
+    elif restart is not None:
+        category = 'restarted'
+    else:
+        category = 'censored_window' if complete else 'censored_end'
+    result.update(t_clear_status='observed', t_clear_s=t_clear,
+                  post_observed_s=observed, post_missing_s=max(0., end - t_clear - observed),
+                  post_stopped_s=stopped, post_window_complete=complete,
+                  restart_category=category, restart_delay_s=restart,
+                  restart_observed_s=end - t_clear)
+    return result

@@ -114,7 +114,9 @@ ros2 launch oit_deliverybot_sim experiment.launch.py \
   seed:=1 seed_set:=development gui:=true
 ```
 
-`scenario:=all`で7場面、`repeats:=N`でseedを1ずつ増やす反復を指定します。GUIには利用可能なディスプレイが必要です。
+`scenario:=all`は従来7場面。追加効率場面`crossing_clear_early/mid/late`、`receding`は名前を明示します。
+`repeats:=N`でseedを1ずつ増やす反復を指定します。GUIには利用可能なディスプレイが必要です。
+
 初期姿勢と目標は環境YAMLで手動設定します。ROS_DOMAIN_IDは既定71で、別端末から観測する場合も合わせます。
 結果は既定で `~/ros2_ws/experiments/simulation/batch_…/` に保存します。
 各試行のMCAP・`samples.csv`・追跡誤差・ログ、バッチ全体の`results.csv`・`comparison.png`を出力します。
@@ -149,7 +151,7 @@ ros2 run oit_deliverybot_sim compare_methods.py \
 | [src/tracked_obstacle_critic.cpp](src/tracked_obstacle_critic.cpp) | Nav2 MPPI criticプラグイン |
 | [include/oit_deliverybot_sim/tracked_obstacle_cost.hpp](include/oit_deliverybot_sim/tracked_obstacle_cost.hpp) | footprintと円の距離・コスト計算 |
 | [launch/experiment.launch.py](launch/experiment.launch.py) / [scripts/run_experiments.py](scripts/run_experiments.py) | 試行の起動・終了・反復・記録 |
-| [config/simulation/](config/simulation/) | 通路・ロボット・Nav2・MPPI・7場面の設定 |
+| [config/simulation/](config/simulation/) | 通路・ロボット・Nav2・MPPI・基本7場面と追加効率場面の設定 |
 | [scripts/simulation_metrics.py](scripts/simulation_metrics.py) / [scripts/compare_methods.py](scripts/compare_methods.py) | 採点・対応比較・検定・区間推定 |
 | [test/](test/) | 追跡・コスト・場面生成・採点・統計処理のテスト |
 

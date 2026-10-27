@@ -25,8 +25,8 @@ from ros_gz_interfaces.msg import Contacts
 from sensor_msgs.msg import LaserScan, PointCloud2
 from sensor_msgs_py import point_cloud2
 from simulation_metrics import (
-    clearance_to_circle, interpolate_truth, support_contact, TrialMetrics)
-from simulation_scenarios import position_at, resolve_scenario, speed_at
+    clearance_to_circle, interpolate_truth, post_clearance_metrics, support_contact, TrialMetrics)
+from simulation_scenarios import BASE_SCENARIOS, position_at, resolve_scenario, speed_at
 from std_msgs.msg import String
 import yaml
 
@@ -509,13 +509,19 @@ def run_trial(args, environment, scenario, method, trial, root, config):
             stop_processes(handles)
             if monitor:
                 monitor.destroy_node()
+    rows = []
+    if obstacle and obstacle.get('post_clearance') and (output / 'samples.csv').exists():
+        with (output / 'samples.csv').open() as stream:
+            rows = list(csv.DictReader(stream))
+    result.update(post_clearance_metrics(rows, environment, obstacle, result['duration_s']))
     return result
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--environment', type=Path, required=True)
-    parser.add_argument('--scenario', default='clear', help='Comma-separated names, or all')
+    parser.add_argument('--scenario', default='clear',
+                        help='Comma-separated names, or all (original seven scenes)')
     parser.add_argument('--method', default='mppi',
                         help='Comma-separated: dwb,mppi,mppi_pos,mppi_cv,mppi_age')
     parser.add_argument('--seed', type=int, default=1)
@@ -533,8 +539,7 @@ def main():
     environment = yaml.safe_load(args.environment.read_text())
     config = Path(get_package_share_directory('oit_deliverybot_sim')) / 'config/simulation'
     available = yaml.safe_load((config / 'scenarios.yaml').read_text())
-    scenarios = [name for name in available if not name.startswith(
-        '_')] if args.scenario == 'all' else args.scenario.split(',')
+    scenarios = list(BASE_SCENARIOS) if args.scenario == 'all' else args.scenario.split(',')
     methods = args.method.split(',')
     if (args.repeats < 1 or args.wall_timeout <= 0 or
             any(k not in available for k in scenarios) or

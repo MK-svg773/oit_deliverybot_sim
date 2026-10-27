@@ -4,6 +4,11 @@ import math
 import random
 
 
+# Keep scenario:=all equal to the original final-evaluation set.
+BASE_SCENARIOS = ('clear', 'static', 'crossing', 'following', 'oncoming',
+                  'stop_go', 'speed_change')
+
+
 def resolve_scenario(config, name, seed):
     """Resolve one seeded obstacle schedule without mutating configuration."""
     obstacle = copy.deepcopy(config[name])

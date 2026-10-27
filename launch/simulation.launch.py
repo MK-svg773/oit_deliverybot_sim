@@ -159,7 +159,8 @@ def generate_launch_description():
         DeclareLaunchArgument('obstacle_y', default_value=''),
         *[DeclareLaunchArgument(k, default_value='') for k in ('x', 'y', 'z', 'yaw')],
         DeclareLaunchArgument('scenario', default_value='clear', choices=[
-            'clear', 'static', 'crossing', 'following', 'oncoming', 'stop_go', 'speed_change']),
+            'clear', 'static', 'crossing', 'following', 'oncoming', 'stop_go', 'speed_change',
+            'crossing_clear_early', 'crossing_clear_mid', 'crossing_clear_late', 'receding']),
         DeclareLaunchArgument('gui', default_value='true', choices=['true', 'false']),
         DeclareLaunchArgument('run', default_value='false', choices=['true', 'false']),
         OpaqueFunction(function=start_simulation),

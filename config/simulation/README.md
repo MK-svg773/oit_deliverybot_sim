@@ -105,3 +105,54 @@ scanの分割から誤追跡が生じ得る。単一円柱の短い確認を人�
 公開参考は[SLIP](https://github.com/SaranSundar08/SLIP/blob/main/nav2_tgmppi_controller/include/nav2_tgmppi_controller/tools/dynamic_obstacle_cost.hpp)と
 [QFN](https://github.com/Arthur1117/QFN-Go1-Dynamic-Navigation/blob/main/src/qfn_mppi_dynamic_critic/src/dynamic_risk_critic.cpp)。
 本実装の追跡器・criticはこの入出力と比較に必要な範囲を独自に記述し、コードの転用はしていない。
+
+## 追加の効率場面（開発条件、最終評価とは別）
+
+`scenario:=all` は既存7場面のまま。追加場面は名前を明示する。
+
+```bash
+ros2 launch oit_deliverybot_sim experiment.launch.py \
+  scenario:=crossing_clear_early,crossing_clear_mid,crossing_clear_late,receding \
+  method:=mppi,mppi_pos,mppi_age,mppi_cv seed:=1 seed_set:=development
+```
+
+- A：`crossing_clear_early/mid/late`。円柱は通行帯上の (3, 0.15) m から +y に離脱し、
+  通行帯の外で停止する。通行帯の手前で停止したロボットへ円柱が後から突入しない配置。−y側への迂回も許容する。
+  基準発進時刻は5.8 / 6.8 / 7.8 s、速度0.5 m/s、継続2.4 s。終点y=1.23〜1.47 m。
+- B：`receding`。円柱は (1.8, 0) m から +x に0.7 m/sで9 s進む。
+  壁・地図は全場面共通。円柱は試行中ずっと走り続けるのではなく、ゴールの先で停止する。
+  全倍率で終点x=7.47〜8.73 mとなり、ゴールx=6と東端壁x=10の間に残る。
+- 新場面だけ速度倍率を0.9〜1.1とする。Bの実速度0.63〜0.77 m/sは
+  ロボット最高速0.5 m/sを上回る。発進遅延への0〜0.3 s加算とseedの乱数生成は既存どおり。
+  初期外形間距離1.44 mは、最大遅延0.3 sに最高速で進む距離0.15 mより大きい。
+- Aの通行帯はstart–goalの直線を中心とする車体半幅0.22 m＋固定余裕0.10 m。
+  円柱半径0.25 mを含め、中心が退出側（+y）の境界0.57 mを**超えた最初の真値サンプル**を
+  `t_clear_s`とする（接するだけでは退出としない）。初期側へ戻るなど再進入した走行は無効。
+  予定軌道による退出の補完や時刻の補間は行わない。約10 Hzの時間粒度を持つ。
+- `W_post=3.0 s`、停止閾値0.03 m/s、再発進の連続保持0.5 s。
+  前側サンプルの実速度で後続区間を代表し、窓境界にかかる区間は重なる長さだけ積分する。
+  間隔0.15 s超や非有限値を含む区間は欠測。終了時刻より後と最終サンプルより後は積分しない。
+  したがってゴール後の停止処理を含まない。
+
+`results.csv`に以下を追加する。採点は試行終了後の`samples.csv`だけを読み、
+追跡器・critic・走行中の制御判定には渡さない。A以外は`not_applicable`と空欄を出力する。
+
+| 列 | 意味 |
+| --- | --- |
+| `t_clear_status`, `t_clear_s` | `observed` / `not_observed` / `missing_samples` / `reentered` / `not_applicable`、退出時刻 |
+| `w_post_s` | 固定窓長 |
+| `post_stopped_s`, `post_observed_s` | 観測できた区間の並進停止時間・観測長 |
+| `post_missing_s`, `post_window_complete` | 観測範囲内の欠測長・固定窓全体を観測できたか |
+| `restart_category`, `restart_delay_s` | 下記カテゴリ、確認できた再発進遅れ。それ以外は空欄 |
+| `restart_observed_s` | 退出から窓末端または最終観測までの長さ（欠測は別列） |
+
+再発進カテゴリは`already_moving`（退出時点で移動中）、`restarted`（窓内で保持確認）、
+`censored_window`（完全窓で再発進未確認）、`censored_end`（窓が終了で短縮）、
+`missing_samples`（最初の再発進を確定できない欠測）、`clear_not_observed`（退出未確定）、
+`not_applicable`。移動中を遅れ0に混ぜない。窓末端で保持未完了なら打切りとする。
+欠測がある停止時間は観測区間の部分和であり、完全窓の値と比較しない。
+
+退出後停止は必要な旋回・再認識・制御応答も含む診断量で、不要停止の証明ではない。
+成功・衝突・観測長を併記し、完全窓を持つ組や両方式が退出時に停止した組の数を残す。
+開発では全方式の到達可能性と計測可能性で条件を決め、C2の優越を採択基準にしない。
+本実験・検定の事前固定は開発結果のレビュー後に別途行う。

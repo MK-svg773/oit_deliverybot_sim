@@ -28,3 +28,39 @@ speed_change:
   segments:
     - {speed: 1.0, duration: 3.0}
     - {speed: 0.5, duration: 6.0}
+
+# Additional efficiency scenes; the original seven entries above stay unchanged.
+# The circle initially blocks the lane, then leaves toward +y and stops before the wall.
+crossing_clear_early:
+  x: 3.0
+  y: 0.15
+  yaw: 1.57079632679
+  speed: 0.5
+  delay: 5.8
+  duration: 2.4
+  speed_scale: [0.9, 1.1]
+  post_clearance: &post_clearance
+    margin_m: 0.1
+    window_s: 3.0
+    hold_s: 0.5
+crossing_clear_mid:
+  x: 3.0
+  y: 0.15
+  yaw: 1.57079632679
+  speed: 0.5
+  delay: 6.8
+  duration: 2.4
+  speed_scale: [0.9, 1.1]
+  post_clearance: *post_clearance
+crossing_clear_late:
+  x: 3.0
+  y: 0.15
+  yaw: 1.57079632679
+  speed: 0.5
+  delay: 7.8
+  duration: 2.4
+  speed_scale: [0.9, 1.1]
+  post_clearance: *post_clearance
+# All randomized speeds exceed 0.5 m/s. Stop beyond the goal, before the east wall.
+receding: {x: 1.8, y: 0.0, yaw: 0.0, speed: 0.7, delay: 0.0, duration: 9.0,
+           speed_scale: [0.9, 1.1]}
