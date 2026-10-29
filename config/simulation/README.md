@@ -34,6 +34,15 @@ ros2 launch oit_deliverybot_sim experiment.launch.py \
 床の凹凸・建物の実際の高さ・高さによる遮蔽を再現したものではない。元の3Dメッシュもenvironment YAMLで指定可能。
 地図の単位とXY原点は変えない。初期位置は車体が重ならない既知の自由領域から人が指定する。
 
+`experiment.launch.py`では、外部environment YAMLの任意項目
+`scenario_origin: [x, y, yaw]`（m、m、rad）で既存場面の配置を移せる。
+乱数化後の障害物位置・向きを、この原点姿勢で回転・平行移動する。
+速度・時間・seedによる対向横ずれは元の場面と同じで、省略時は従来のworld座標のまま。
+ロボットの`start`と`goal`は自動変換せず、同じ変換を施したworld座標を外部YAMLへ指定する。
+ランナーは変換済み姿勢を`simulation.launch.py`の`obstacle_x/y/yaw`へ渡す。
+`simulation.launch.py`単体では`scenario_origin`を適用しない。
+学校座標を含むYAMLはリポジトリ外に置く。
+
 LiDARは720×32点、10Hzの理想モデル。反射強度・欠測・走査中の動きは未モデル化。
 移動物は重力を切った剛体円柱に速度を与える。人の行動や接触後の物理反応のモデルではない。
 採点用の正解位置は`/evaluation/`へ配信し、AMCL・Nav2へ入力しない。

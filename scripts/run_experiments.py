@@ -347,7 +347,8 @@ def run_trial(args, environment, scenario, method, trial, root, config):
     output.mkdir()
     seed = args.seed + trial - 1
     obstacle = resolve_scenario(yaml.safe_load(
-        (config / 'scenarios.yaml').read_text()), scenario, seed)
+        (config / 'scenarios.yaml').read_text()), scenario, seed,
+        origin=environment.get('scenario_origin'))
     handles = []
     monitor = None
     reason = ''
@@ -360,7 +361,8 @@ def run_trial(args, environment, scenario, method, trial, root, config):
             ['ros2', 'launch', 'oit_deliverybot_sim', 'simulation.launch.py',
              f'environment:={args.environment}', f'scenario:={scenario}',
              f'gui:={args.gui}', 'run:=true',
-             *([f"obstacle_y:={obstacle['y']}"] if scenario == 'oncoming' else [])],
+             *([f'obstacle_{key}:={obstacle[key]}' for key in ('x', 'y', 'yaw')]
+               if obstacle else [])],
             output / 'simulation.log', env, handles)
         nav = launch_process(
             ['ros2', 'launch', 'oit_deliverybot_sim', 'simulation_navigation.launch.py',

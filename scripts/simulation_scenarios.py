@@ -9,8 +9,10 @@ BASE_SCENARIOS = ('clear', 'static', 'crossing', 'following', 'oncoming',
                   'stop_go', 'speed_change')
 
 
-def resolve_scenario(config, name, seed):
+def resolve_scenario(config, name, seed, origin=None):
     """Resolve one seeded obstacle schedule without mutating configuration."""
+    if origin is not None and (len(origin) != 3 or not all(math.isfinite(v) for v in origin)):
+        raise ValueError('Scenario origin must be finite [x, y, yaw]')
     obstacle = copy.deepcopy(config[name])
     if obstacle is None:
         return None
@@ -25,6 +27,12 @@ def resolve_scenario(config, name, seed):
                             for s in segments]
     if name == 'oncoming':
         obstacle['y'] = rng.uniform(0.3, 0.7) * rng.choice((-1, 1))
+    if origin is not None:
+        ox, oy, yaw = origin
+        x, y = obstacle['x'], obstacle['y']
+        obstacle['x'] = ox + math.cos(yaw) * x - math.sin(yaw) * y
+        obstacle['y'] = oy + math.sin(yaw) * x + math.cos(yaw) * y
+        obstacle['yaw'] += yaw
     return obstacle
 
 

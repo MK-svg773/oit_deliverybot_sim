@@ -125,3 +125,93 @@ def test_leaving_circle_never_approaches_a_robot_waiting_before_the_lane():
                 for after_start in (0., .5, 1., 2., 3., 60.):
                     x, y = position_at(obstacle, obstacle['delay'] + after_start)
                     assert clearance_to_circle(robot_x, 0., 0., x, y, .25) >= initial
+
+
+def test_scene_origin_rotates_seeded_motion_without_changing_random_draws():
+    """Catch world-y randomization after rotation and missing heading transforms."""
+    import math
+    import pytest
+
+    config = yaml.safe_load(
+        (Path(__file__).resolve().parents[1] /
+         'config/simulation/scenarios.yaml').read_text())
+    original = resolve_scenario(config, 'oncoming', 8)
+    moved = resolve_scenario(config, 'oncoming', 8, origin=[10., 20., math.pi / 2])
+    assert moved['x'] == pytest.approx(10. - original['y'])
+    assert moved['y'] == pytest.approx(27.)
+    assert moved['yaw'] == pytest.approx(original['yaw'] + math.pi / 2)
+    assert moved['segments'] == original['segments']
+    assert moved['delay'] == original['delay']
+    assert moved['speed_scale'] == original['speed_scale']
+    for time in (0., 1., 3., 10.):
+        x, y = position_at(original, time)
+        assert position_at(moved, time) == pytest.approx((10. - y, 20. + x))
+    assert resolve_scenario(config, 'oncoming', 8) == original
+    assert config['oncoming']['x'] == 7.
+    assert resolve_scenario(config, 'clear', 8, origin=[10., 20., math.pi / 2]) is None
+
+
+def test_invalid_scene_origin_is_rejected():
+    """Reject malformed placement before starting the simulator."""
+    import pytest
+
+    config = {'_variation': {'speed_scale': [1, 1], 'delay_offset_s': [0, 0]},
+              'static': {'x': 3., 'y': 0., 'yaw': 0., 'delay': 0.}}
+    for origin in ([1., 2.], [1., 2., float('nan')], [1., float('inf'), 0.]):
+        with pytest.raises(ValueError):
+            resolve_scenario(config, 'static', 8, origin=origin)
+
+
+def test_simulation_spawns_resolved_pose_and_keeps_default_pose(monkeypatch):
+    """Catch a mismatch between runner evaluation coordinates and Gazebo spawn."""
+    import importlib.util
+    import xml.etree.ElementTree as ET
+
+    from launch import LaunchContext
+    from launch.utilities import perform_substitutions
+    import pytest
+
+    root = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location(
+        'simulation_launch', root / 'launch/simulation.launch.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    monkeypatch.setattr(module, 'get_package_share_directory', lambda _: str(root))
+    for overrides, expected in [
+            ({'x': '11', 'y': '27', 'yaw': '4.7'}, [11., 27., .64, 0., 0., 4.7]),
+            ({'x': '', 'y': '', 'yaw': ''}, [7., 0., .64, 0., 0., 3.14159265359])]:
+        context = LaunchContext()
+        context.launch_configurations.update({
+            'environment': str(root / 'config/simulation/corridor.yaml'),
+            'mesh': '', 'scenario': 'oncoming', 'gui': 'false', 'run': 'false',
+            **{key: '' for key in ('x', 'y', 'z', 'yaw')},
+            **{'obstacle_' + key: value for key, value in overrides.items()},
+        })
+        actions = module.start_simulation(context)
+        command = [perform_substitutions(context, part) for part in actions[1].cmd]
+        tree = ET.parse(command[2])
+        pose = tree.find("./world/model[@name='obstacle']/pose").text
+        assert list(map(float, pose.split())) == pytest.approx(expected)
+
+
+def test_motion_checker_uses_external_scene_origin(tmp_path, monkeypatch):
+    """Catch false motion failures from comparing moved obstacles to corridor coordinates."""
+    import csv
+    import math
+
+    import check_obstacle_motion
+
+    root = Path(__file__).resolve().parents[1]
+    monkeypatch.setattr(check_obstacle_motion, 'get_package_share_directory', lambda _: str(root))
+    environment = tmp_path / 'environment.yaml'
+    environment.write_text(yaml.safe_dump({'scenario_origin': [10., 20., math.pi / 2]}))
+    result = {'scenario': 'static', 'method': 'mppi', 'seed': 8, 'output': str(tmp_path),
+              'environment': str(environment), 'actual_delay_s': 0.,
+              'actual_segments': '[{"speed": 0.0, "duration": 0.0}]'}
+    with (tmp_path / 'results.csv').open('w') as stream:
+        writer = csv.DictWriter(stream, fieldnames=list(result))
+        writer.writeheader()
+        writer.writerow(result)
+    (tmp_path / 'samples.csv').write_text(
+        'time_s,obstacle_x_m,obstacle_y_m\n0.0,10.0,23.0\n0.5,10.0,23.0\n1.0,10.0,23.0\n')
+    assert check_obstacle_motion.check_batch(tmp_path)

@@ -9,6 +9,8 @@ from pathlib import Path
 from ament_index_python.packages import get_package_share_directory
 import yaml
 
+from simulation_scenarios import resolve_scenario
+
 
 def check_batch(root):
     """Check measured motion independently against recorded resolved schedules."""
@@ -17,7 +19,9 @@ def check_batch(root):
     checks = []
     for result in csv.DictReader((root / 'results.csv').open()):
         rows = list(csv.DictReader((Path(result['output']) / 'samples.csv').open()))
-        obstacle = config[result['scenario']]
+        environment = yaml.safe_load(Path(result['environment']).read_text())
+        obstacle = resolve_scenario(config, result['scenario'], int(result['seed']),
+                                    origin=environment.get('scenario_origin'))
         segments = json.loads(result['actual_segments'])
         delay = float(result['actual_delay_s']) if obstacle else 0.
         boundaries = []
