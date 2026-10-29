@@ -7,9 +7,8 @@ import math
 from pathlib import Path
 
 from ament_index_python.packages import get_package_share_directory
-import yaml
-
 from simulation_scenarios import resolve_scenario
+import yaml
 
 
 def check_batch(root):
