@@ -30,7 +30,7 @@ def recorded_truth(samples, target, max_gap):
     return point
 
 
-def trial_residuals(directory, offsets, max_age, max_gap):
+def trial_residuals(directory, offsets, max_age, max_gap, directional=False):
     """Compare noisy published CV outputs at monitor processing time with future truth."""
     rows = read_csv(directory / 'samples.csv')
     # Keep invalid positions in the history so interpolation cannot bridge across missing data.
@@ -41,8 +41,11 @@ def trial_residuals(directory, offsets, max_age, max_gap):
             any(b <= a for a, b in zip(times, times[1:]))):
         raise ValueError(f'{directory}: truth timestamps must be finite and strictly increasing')
     residuals = [[] for _ in offsets]
+    vectors = [[] for _ in offsets]
     stats = {'track_rows': 0, 'unmatched_rows': 0, 'invalid_rows': 0, 'stale_or_future_rows': 0,
              'false_tracks': 0, 'missing_truth_counts': [0] * len(offsets)}
+    if directional:
+        stats['low_speed_rows'] = 0
     for row in read_csv(directory / 'tracking_errors.csv'):
         stats['track_rows'] += 1
         stats['false_tracks'] += int(row['false_tracks'])
@@ -60,6 +63,9 @@ def trial_residuals(directory, offsets, max_age, max_gap):
         if not 0 <= age <= max_age:
             stats['stale_or_future_rows'] += 1
             continue
+        speed = math.hypot(vx, vy)
+        if directional and speed < .1:
+            stats['low_speed_rows'] += 1
         for j, offset in enumerate(offsets):
             elapsed = age + offset
             try:
@@ -71,11 +77,18 @@ def trial_residuals(directory, offsets, max_age, max_gap):
             if not math.isfinite(residual):
                 raise ValueError(f'{directory}: nonfinite prediction residual')
             residuals[j].append(residual)
+            if directional and speed >= .1:
+                ex, ey = tx - (x + vx * elapsed), ty - (y + vy * elapsed)
+                vectors[j].append(((ex * vx + ey * vy) / speed,
+                                   (-ex * vy + ey * vx) / speed))
     stats['sample_counts'] = [len(values) for values in residuals]
-    return residuals, stats
+    if directional:
+        stats['directional_sample_counts'] = [len(values) for values in vectors]
+    return residuals, stats, vectors
 
 
-def calibrate(result_paths, *, quantile, time_steps, model_dt, max_truth_gap=.12):
+def calibrate(result_paths, *, quantile, time_steps, model_dt, max_truth_gap=.12,
+              directional=False):
     """Pool time-indexed residuals for one development noise/delay/environment condition."""
     if quantile is None or not math.isfinite(quantile) or not 0 < quantile <= 1:
         raise ValueError('quantile must be explicitly supplied in (0, 1]')
@@ -90,6 +103,7 @@ def calibrate(result_paths, *, quantile, time_steps, model_dt, max_truth_gap=.12
     if not all(math.isfinite(t) and t > 0 for t in offsets):
         raise ValueError('model_dt produces an invalid float prediction horizon')
     pooled = [[] for _ in offsets]
+    directional_pooled = [[] for _ in offsets]
     trials, skipped = [], []
     seen_paths, seen_trials, seeds, scenarios = set(), set(), set(), set()
     condition = None
@@ -118,8 +132,11 @@ def calibrate(result_paths, *, quantile, time_steps, model_dt, max_truth_gap=.12
                 raise ValueError(
                     'Use separate tables for different noise/delay/environment conditions')
             condition = current
-            residuals, stats = trial_residuals(directory, offsets, delay + 1., max_truth_gap)
+            residuals, stats, vectors = trial_residuals(
+                directory, offsets, delay + 1., max_truth_gap, directional)
             for pool, values in zip(pooled, residuals):
+                pool.extend(values)
+            for pool, values in zip(directional_pooled, vectors):
                 pool.extend(values)
             if any(stats['sample_counts']):
                 seeds.add(seed)
@@ -132,7 +149,7 @@ def calibrate(result_paths, *, quantile, time_steps, model_dt, max_truth_gap=.12
     margins = [float(np.quantile(values, quantile, method='inverted_cdf')) for values in pooled]
     totals = {key: sum(trial[key] for trial in trials) for key in (
         'track_rows', 'unmatched_rows', 'invalid_rows', 'stale_or_future_rows', 'false_tracks')}
-    return {
+    table = {
         'time_steps': time_steps, 'model_dt': float(model_dt), 'prediction_margins': margins,
         'calibration': {
             'quantile': float(quantile), 'quantile_method': 'inverted_cdf',
@@ -145,6 +162,26 @@ def calibrate(result_paths, *, quantile, time_steps, model_dt, max_truth_gap=.12
             'missing_truth_counts': [sum(trial['missing_truth_counts'][j] for trial in trials)
                                      for j in range(time_steps)],
             **totals, 'trials': trials, 'skipped_trials': skipped}}
+    if directional:
+        if not all(directional_pooled):
+            raise ValueError('No directional residual samples for one or more prediction steps')
+        # Fixed bin centres: 0,10,...,350 degrees; +y is left of the predicted velocity.
+        angles = np.arange(36) * (2 * np.pi / 36)
+        directions = np.array([np.cos(angles), np.sin(angles)])
+        table['directional_prediction_margins'] = [
+            np.maximum(0., np.quantile(
+                np.asarray(values) @ directions, quantile, axis=0, method='inverted_cdf')).tolist()
+            for values in directional_pooled]
+        table['calibration'].update({
+            'directional_bins': 36, 'directional_bin_centres_deg': list(range(0, 360, 10)),
+            'directional_frame': 'predicted velocity: forward +x, left +y; counterclockwise',
+            'directional_score': '(truth - CV prediction) dot bin unit vector',
+            'directional_interpretation': 'far-field projection approximation; no ECP guarantee',
+            'directional_min_speed_mps': .1,
+            'directional_fallback': 'prediction_margins[j] for speed <0.1 or separation <=1e-12 m',
+            'directional_sample_counts': [len(values) for values in directional_pooled],
+            'low_speed_rows': sum(trial['low_speed_rows'] for trial in trials)})
+    return table
 
 
 def main():
@@ -157,10 +194,13 @@ def main():
     parser.add_argument('--max-truth-gap', type=float, default=.12,
                         help='Maximum bracketing truth gap, seconds (same as monitor)')
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--directional', action='store_true',
+                        help='Also calibrate fixed 36-bin velocity-relative C2d margins')
     args = parser.parse_args()
     try:
         table = calibrate(args.results, quantile=args.quantile, time_steps=args.time_steps,
-                          model_dt=args.model_dt, max_truth_gap=args.max_truth_gap)
+                          model_dt=args.model_dt, max_truth_gap=args.max_truth_gap,
+                          directional=args.directional)
     except (ValueError, KeyError, OSError) as exc:
         parser.error(str(exc))
     args.output.write_text(yaml.safe_dump(table, sort_keys=False))

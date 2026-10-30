@@ -369,7 +369,8 @@ def run_trial(args, environment, scenario, method, trial, root, config):
              f'environment:={args.environment}', f'method:={method}',
              f'additional_delay:={args.additional_delay}',
              f'velocity_noise_std:={args.velocity_noise_std}',
-             *([f'calibration_file:={args.calibration_file}'] if method == 'mppi_cvu' else [])],
+             *([f'calibration_file:={args.calibration_file}']
+               if method in ('mppi_cvu', 'mppi_cvd') else [])],
             output / 'navigation.log', env, handles)
         monitor = Monitor(environment, obstacle, output)
         deadline = time.monotonic() + args.wall_timeout
@@ -526,8 +527,10 @@ def main():
     parser.add_argument('--scenario', default='clear',
                         help='Comma-separated names, or all (original seven scenes)')
     parser.add_argument('--method', default='mppi',
-                        help='Comma-separated: dwb,mppi,mppi_pos,mppi_cv,mppi_age,mppi_cvu')
-    parser.add_argument('--calibration_file', default='', help='Required YAML table for mppi_cvu')
+                        help='Comma-separated: '
+                        'dwb,mppi,mppi_pos,mppi_cv,mppi_age,mppi_cvu,mppi_cvd')
+    parser.add_argument('--calibration_file', default='',
+                        help='C2u/C2d YAML; C2d defaults to c2d_margins for the noise level')
     parser.add_argument('--seed', type=int, default=1)
     parser.add_argument('--seed_set', choices=['development', 'final'], default='development')
     parser.add_argument('--additional_delay', type=float, default=0.)
@@ -547,12 +550,15 @@ def main():
     methods = args.method.split(',')
     if (args.repeats < 1 or args.wall_timeout <= 0 or
             any(k not in available for k in scenarios) or
-            any(k not in ('dwb', 'mppi', 'mppi_pos', 'mppi_cv', 'mppi_age', 'mppi_cvu')
+            any(k not in ('dwb', 'mppi', 'mppi_pos', 'mppi_cv', 'mppi_age', 'mppi_cvu', 'mppi_cvd')
                 for k in methods)):
         parser.error('Invalid repeats, timeout, scenario or method')
-    if 'mppi_cvu' in methods:
+    if 'mppi_cvd' in methods and not args.calibration_file:
+        args.calibration_file = str(config / 'c2d_margins' /
+                                    f'noise_{args.velocity_noise_std}.yaml')
+    if any(method in ('mppi_cvu', 'mppi_cvd') for method in methods):
         if not args.calibration_file or not Path(args.calibration_file).expanduser().is_file():
-            parser.error('mppi_cvu requires an existing --calibration_file')
+            parser.error('mppi_cvu/mppi_cvd requires an existing --calibration_file')
         args.calibration_file = str(Path(args.calibration_file).expanduser().resolve())
     low, high = available['_variation'][args.seed_set + '_seeds']
     if not low <= args.seed <= args.seed + args.repeats - 1 <= high:

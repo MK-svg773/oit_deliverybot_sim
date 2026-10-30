@@ -22,6 +22,21 @@ inline void validatePredictionMargins(const std::vector<double> & margins, size_
   }
 }
 
+// Fixed 10-degree bins centred on 0,10,...,350 degrees relative to predicted velocity.
+// dx,dy points from the predicted obstacle centre towards the candidate robot position.
+inline double directionalPredictionMargin(
+  const std::vector<double> & margins, size_t step, double dx, double dy,
+  double vx, double vy, double fallback)
+{
+  if (margins.empty() || vx * vx + vy * vy < .1 * .1 || dx * dx + dy * dy <= 1e-24) {
+    return fallback;
+  }
+  constexpr double bin_width = 2 * M_PI / 36;
+  const double angle = std::atan2(vx * dy - vy * dx, vx * dx + vy * dy);
+  const int bin = (static_cast<int>(std::floor(angle / bin_width + .5)) + 36) % 36;
+  return margins[step * 36 + bin];
+}
+
 // Keep model_dt as float, matching CriticData and the original C1/C2 arithmetic.
 inline double trackPredictionTime(
   double age, size_t step, float model_dt, bool extrapolate_future = true)

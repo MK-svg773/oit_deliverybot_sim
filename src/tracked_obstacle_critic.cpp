@@ -32,6 +32,8 @@ public:
     get(extrapolate_future_, "extrapolate_future", true);
     get(max_age_, "max_track_age", 1.0);
     get(prediction_margins_, "prediction_margins", std::vector<double>{}, ParameterType::Static);
+    get(directional_prediction_margins_, "directional_prediction_margins", std::vector<double>{},
+      ParameterType::Static);
     if (weight_ < 0 || power_ < 1 || margin_ < 0 || max_age_ <= 0 || collision_cost_ < 0) {
       throw std::runtime_error("Invalid TrackedObstacleCritic parameters");
     }
@@ -39,6 +41,14 @@ public:
       throw std::runtime_error("TrackedObstacleCritic requires a convex polygon footprint");
     }
     auto node = parent_.lock();
+    if (!directional_prediction_margins_.empty()) {
+      const auto steps = node->get_parameter(parent_name_ + ".time_steps").as_int();
+      oit_deliverybot_sim::validatePredictionMargins(directional_prediction_margins_, steps * 36);
+      if (prediction_margins_.empty()) {
+        throw std::invalid_argument("directional_prediction_margins requires C2u fallback margins");
+      }
+      RCLCPP_INFO(logger_, "Directional prediction margins enabled: %ld steps x 36 bins", steps);
+    }
     if (!prediction_margins_.empty()) {
       if (!use_velocity_ || !extrapolate_future_) {
         throw std::runtime_error("prediction_margins requires constant-velocity future prediction");
@@ -132,25 +142,51 @@ public:
       footprint.push_back({p.x, p.y});
     }
     if (footprint.size() < 3) {data.fail_flag = true; return;}
+    double first_directional_margin = 0.;
     for (size_t i = 0; i < data.trajectories.x.shape(0); ++i) {
       oit_deliverybot_sim::ObstacleTrajectoryCost cost;
       for (size_t j = 0; j < steps; ++j) {
         double nearest = std::numeric_limits<double>::infinity();
+        double nearest_adjusted = std::numeric_limits<double>::infinity();
         const double time = oit_deliverybot_sim::trackPredictionTime(
           age, j + 1, data.model_dt, extrapolate_future_);
         for (const auto & obstacle : obstacles) {
-          nearest = std::min(nearest, oit_deliverybot_sim::footprintCircleDistance(
+          const double px = obstacle.x + obstacle.vx * time;
+          const double py = obstacle.y + obstacle.vy * time;
+          const double distance = oit_deliverybot_sim::footprintCircleDistance(
                 data.trajectories.x(i, j), data.trajectories.y(i, j),
-                data.trajectories.yaws(i, j),
-                obstacle.x + obstacle.vx * time, obstacle.y + obstacle.vy * time,
-                obstacle.radius, footprint));
+                data.trajectories.yaws(i, j), px, py, obstacle.radius, footprint);
+          nearest = std::min(nearest, distance);
+          if (!directional_prediction_margins_.empty()) {
+            const double prediction_margin = oit_deliverybot_sim::directionalPredictionMargin(
+              directional_prediction_margins_, j,
+              data.trajectories.x(i, j) - px, data.trajectories.y(i, j) - py,
+              obstacle.vx, obstacle.vy, prediction_margins_[j]);
+            nearest_adjusted = std::min(nearest_adjusted, distance - prediction_margin);
+            if (i == 0 && j == 0 && &obstacle == &obstacles.front()) {
+              first_directional_margin = prediction_margin;
+            }
+          }
         }
-        cost.addStep(nearest, margin_, prediction_margins_.empty() ? 0.0 : prediction_margins_[j]);
+        if (directional_prediction_margins_.empty()) {
+          cost.addStep(nearest, margin_,
+              prediction_margins_.empty() ? 0.0 : prediction_margins_[j]);
+        } else {
+          // Select after applying each track's own margin; keep physical collision separate.
+          cost.shortage_sum += std::max(0.0, margin_ - nearest_adjusted);
+          cost.collision |= nearest < 0;
+        }
       }
       data.costs(i) += cost.score(steps, weight_, power_, collision_cost_);
     }
     if (!obstacles.empty()) {
       const auto & o = obstacles.front();
+      if (!directional_prediction_margins_.empty()) {
+        RCLCPP_INFO_THROTTLE(logger_, *node->get_clock(), 2000,
+          "Directional margin evaluated: candidate=0 step=0 track=0 margin=%.6f "
+          "C2u_fallback=%.6f speed=%.6f",
+          first_directional_margin, prediction_margins_[0], std::hypot(o.vx, o.vy));
+      }
       const double horizon = oit_deliverybot_sim::trackPredictionTime(
         age, steps, data.model_dt, extrapolate_future_);
       RCLCPP_INFO_THROTTLE(logger_, *node->get_clock(), 2000,
@@ -167,6 +203,7 @@ private:
   bool use_velocity_{false};
   bool extrapolate_future_{true};
   std::vector<double> prediction_margins_;
+  std::vector<double> directional_prediction_margins_;
   float calibrated_model_dt_{0};
   std::mutex mutex_;
   sensor_msgs::msg::PointCloud2::ConstSharedPtr tracks_;

@@ -49,13 +49,14 @@ protected:
 
   std::shared_ptr<mppi::critics::CriticFunction> create(
     const std::string & name, bool velocity, bool future, bool enabled,
-    const std::vector<double> & margins = {})
+    const std::vector<double> & margins = {}, const std::vector<double> & directions = {})
   {
     const auto ns = "FollowPath." + name;
     node->declare_parameter(ns + ".use_velocity", velocity);
     node->declare_parameter(ns + ".extrapolate_future", future);
     node->declare_parameter(ns + ".enabled", enabled);
     node->declare_parameter(ns + ".prediction_margins", margins);
+    node->declare_parameter(ns + ".directional_prediction_margins", directions);
     auto critic = loader.createSharedInstance("mppi::critics::TrackedObstacleCritic");
     critic->on_configure(node, "FollowPath", ns, costmap, handler.get());
     return critic;
@@ -167,5 +168,80 @@ TEST_F(CriticPlugin, InvalidTablesFailConfiguration)
     std::runtime_error);
   EXPECT_THROW(create("AgeOnly", true, false, true, std::vector<double>(32, .1)),
     std::runtime_error);
+}
+
+TEST_F(CriticPlugin, InvalidDirectionalTablesFailConfiguration)
+{
+  const std::vector<double> fallback(32, .1);
+  EXPECT_THROW(create("ShortDirection", true, true, true, fallback, {.1}),
+    std::invalid_argument);
+  EXPECT_THROW(create("NegativeDirection", true, true, true, fallback,
+    std::vector<double>(32 * 36, -.1)), std::invalid_argument);
+  EXPECT_THROW(create("NonfiniteDirection", true, true, true, fallback,
+    std::vector<double>(32 * 36, NAN)), std::invalid_argument);
+  EXPECT_THROW(create("NoFallback", true, true, true, {}, std::vector<double>(32 * 36, .1)),
+    std::invalid_argument);
+}
+
+TEST_F(CriticPlugin, DirectionalSelectionUsesAdjustedGapButCollisionUsesAllPhysicalGaps)
+{
+  std::vector<double> directions(32 * 36, 0.);
+  for (size_t j = 0; j < 32; ++j) {
+    directions[j * 36] = 10.;
+  }
+  auto critic = create("Directional", true, true, true, std::vector<double>(32, .5), directions);
+  auto sender = std::make_shared<rclcpp::Node>("directional_test_tracks");
+  auto publisher = sender->create_publisher<sensor_msgs::msg::PointCloud2>(
+    "/sim/obstacle_tracks", 10);
+  sensor_msgs::msg::PointCloud2 cloud;
+  cloud.header.frame_id = "map";
+  cloud.header.stamp = rclcpp::Time(10000000000LL);
+  sensor_msgs::PointCloud2Modifier modifier(cloud);
+  modifier.setPointCloud2Fields(5, "x", 1, sensor_msgs::msg::PointField::FLOAT32,
+    "y", 1, sensor_msgs::msg::PointField::FLOAT32,
+    "vx", 1, sensor_msgs::msg::PointField::FLOAT32,
+    "vy", 1, sensor_msgs::msg::PointField::FLOAT32,
+    "radius", 1, sensor_msgs::msg::PointField::FLOAT32);
+  modifier.resize(2);
+  rclcpp::executors::SingleThreadedExecutor executor;
+  executor.add_node(node->get_node_base_interface());
+  for (size_t attempt = 0; attempt < 100 && publisher->get_subscription_count() < 1; ++attempt) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  ASSERT_EQ(publisher->get_subscription_count(), 1u);
+  mppi::models::State state;
+  state.pose.header.frame_id = "map";
+  mppi::models::Trajectories trajectories;
+  trajectories.reset(1, 32);
+  mppi::models::Path path;
+  geometry_msgs::msg::Pose goal;
+  float dt = .1f;
+  xt::xtensor<float, 1> costs = xt::zeros<float>({1});
+  mppi::CriticData data{state, trajectories, path, goal, costs, dt, false, nullptr,
+    nullptr, std::nullopt, std::nullopt};
+  // Rear track is physically farther, but its forward margin is 10 m.
+  // Case 1: neither overlaps. Case 2: only the nonselected front track overlaps.
+  for (const float front_x : {1.f, .3f}) {
+    sensor_msgs::PointCloud2Iterator<float> x(cloud, "x"), y(cloud, "y"),
+    vx(cloud, "vx"), vy(cloud, "vy"), radius(cloud, "radius");
+    for (const float ox : {front_x, -3.f}) {
+      *x = ox; *y = 0.; *vx = .125; *vy = 0.; *radius = .25;
+      ++x; ++y; ++vx; ++vy; ++radius;
+    }
+    for (size_t attempt = 0; attempt < 20; ++attempt) {
+      publisher->publish(cloud);
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      executor.spin_some();
+    }
+    costs.fill(0.);
+    critic->score(data);
+    ASSERT_FALSE(data.fail_flag);
+    double shortage = 0.;
+    for (size_t j = 0; j < 32; ++j) {
+      shortage += 7.91 + .125 * ((j + 1) * dt);  // .25 + 10 - (3 - .125*t - .66)
+    }
+    const float expected = 20. * shortage / 32 + (front_x < .5f ? 1000. : 0.);
+    EXPECT_FLOAT_EQ(costs(0), expected);
+  }
 }
 }  // namespace

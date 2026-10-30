@@ -146,6 +146,21 @@ def test_calibrated_margin_comparisons():
         'mppi_cvu - mppi_cv', 'mppi_cvu - mppi_pos'}
 
 
+def test_directional_comparison_pairing_and_three_scene_holm():
+    """Catch reversed C2d deltas or mixing comparison families in Holm correction."""
+    rows = [dict(r, method={'mppi_pos': 'mppi_cvu', 'mppi_age': 'mppi_cv',
+                            'mppi_cv': 'mppi_cvd'}[r['method']]) for r in age_rows()
+            if r['scenario'] in ('following', 'stop_go', 'speed_change')]
+    _, tests = compare.analyze(rows, comparisons=('C2u-C2d', 'C2-C2d'))
+    for label, direction, delta in [('C2u-C2d', 'mppi_cvd - mppi_cvu', 10.5),
+                                    ('C2-C2d', 'mppi_cvd - mppi_cv', 7.)]:
+        stopped = next(r for r in tests if r['comparison'] == label and
+                       r['scenario'] == 'following' and r['metric'] == 'stopped_s')
+        assert stopped['delta_direction'] == direction
+        assert stopped['median_delta'] == delta
+        assert stopped['p_holm'] == .09375
+
+
 def test_age_comparison_cli_outputs(tmp_path):
     """Exercise selection, CSV direction labels and plots through the real CLI."""
     source = tmp_path / 'input.csv'

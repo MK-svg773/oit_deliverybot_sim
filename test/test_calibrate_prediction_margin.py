@@ -141,3 +141,50 @@ def test_cli_writes_double_array_and_metadata_requires_quantile(tmp_path):
     assert all(isinstance(value, float) for value in table['prediction_margins'])
     assert table['calibration']['seeds'] == [100]
     assert table['calibration']['quantile'] == .9
+    done = subprocess.run([*args, '--quantile', '.9', '--directional'],
+                          capture_output=True, text=True)
+    assert done.returncode == 0, done.stderr
+    directional = yaml.safe_load(output.read_text())
+    assert directional['prediction_margins'] == table['prediction_margins']
+    # Default fixture overpredicts eastward motion; only the westward score is positive.
+    assert directional['directional_prediction_margins'][0][0] == 0.
+    assert directional['directional_prediction_margins'][0][18] == pytest.approx(.3)
+
+
+def test_directional_quantiles_rotate_residuals_and_exclude_slow_tracks(tmp_path):
+    """Catch wrong residual sign/frame, interpolated quantiles and slow-row inclusion."""
+    files = []
+    # Velocity points north: world residual (-2, a) is local (a, 2).
+    # Nine a=1 and one a=10 give inverted-CDF Q_0.9=1, not 1.9.
+    for i, a in enumerate([1.] * 9 + [10.]):
+        tracks = [{'time_s': 0., 'age_s': .2, 'matched': True, 'false_tracks': 0,
+                   'x_m': 2., 'y_m': -a, 'vx_mps': 0., 'vy_mps': 1.}]
+        samples = [{'time_s': k * .05, 'obstacle_x_m': 0., 'obstacle_y_m': k * .05}
+                   for k in range(41)]
+        files.append(trial(tmp_path, seed=130 + i, tracks=tracks, samples=samples))
+    tracks = [{'time_s': 0., 'age_s': 0., 'matched': True, 'false_tracks': 0,
+               'x_m': -100., 'y_m': 0., 'vx_mps': .099, 'vy_mps': 0.}]
+    files.append(trial(tmp_path, seed=140, tracks=tracks))
+    old = calibrate(files, quantile=.9, time_steps=2, model_dt=.1)
+    result = calibrate(files, quantile=.9, time_steps=2, model_dt=.1, directional=True)
+    assert result['prediction_margins'] == old['prediction_margins']
+    assert result['calibration']['sample_counts'] == [11, 11]
+    assert result['calibration']['directional_sample_counts'] == [10, 10]
+    assert result['calibration']['low_speed_rows'] == 1
+    for row in result['directional_prediction_margins']:
+        assert len(row) == 36
+        assert [row[b] for b in (0, 9, 18, 27)] == pytest.approx([1., 2., 0., 0.])
+        assert row[3] == pytest.approx(3 ** .5 / 2 + 1.)
+
+
+def test_directional_zero_point_one_speed_is_included(tmp_path):
+    """The fixed lower bound is inclusive, while no directional data must fail."""
+    tracks = [{'time_s': 0., 'age_s': 0., 'matched': True, 'false_tracks': 0,
+               'x_m': 0., 'y_m': 0., 'vx_mps': .1, 'vy_mps': 0.}]
+    source = trial(tmp_path, tracks=tracks)
+    result = calibrate([source], quantile=.9, time_steps=2, model_dt=.1, directional=True)
+    assert result['calibration']['directional_sample_counts'] == [1, 1]
+    tracks[0]['vx_mps'] = .099
+    source = trial(tmp_path, tracks=tracks)
+    with pytest.raises(ValueError, match='directional.*samples'):
+        calibrate([source], quantile=.9, time_steps=2, model_dt=.1, directional=True)

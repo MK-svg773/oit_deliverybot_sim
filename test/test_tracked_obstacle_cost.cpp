@@ -154,3 +154,39 @@ TEST(TrackedObstacleCost, CalibrationRejectsBadLengthNegativeAndNonfiniteValues)
   EXPECT_THROW(validatePredictionMargins({INFINITY}, 1), std::invalid_argument);
   EXPECT_THROW(validatePredictionMargins({NAN}, 1), std::invalid_argument);
 }
+
+TEST(TrackedObstacleCost, DirectionalBinsRotateWithVelocityAndWrapAtZero)
+{
+  using oit_deliverybot_sim::directionalPredictionMargin;
+  std::vector<double> table(72);
+  for (size_t k = 0; k < table.size(); ++k) {
+    table[k] = k;
+  }
+  // Bin centres 0,10,...,350 degrees, with bin 0 covering [-5,5).
+  EXPECT_DOUBLE_EQ(directionalPredictionMargin(table, 0, 1, 0, 1, 0, 99), 0);
+  EXPECT_DOUBLE_EQ(directionalPredictionMargin(table, 0, 0, 1, 1, 0, 99), 9);
+  EXPECT_DOUBLE_EQ(directionalPredictionMargin(table, 0, -1, 0, 1, 0, 99), 18);
+  EXPECT_DOUBLE_EQ(directionalPredictionMargin(table, 0, 0, -1, 1, 0, 99), 27);
+  EXPECT_DOUBLE_EQ(directionalPredictionMargin(table, 1, 0, 1, 0, 1, 99), 36);
+  EXPECT_DOUBLE_EQ(directionalPredictionMargin(table, 1, -1, 0, 0, 1, 99), 45);
+  for (const auto & p : std::vector<std::pair<double, double>>{
+    {-4.99, 0}, {4.99, 0}, {5.01, 1}, {-5.01, 35}, {354.99, 35}, {355.01, 0}})
+  {
+    const double angle = p.first * M_PI / 180.;
+    EXPECT_DOUBLE_EQ(directionalPredictionMargin(
+        table, 0, std::cos(angle), std::sin(angle), 1, 0, 99), p.second);
+  }
+}
+
+TEST(TrackedObstacleCost, DirectionalFallbackIsOriginalTimeIndexedMargin)
+{
+  using oit_deliverybot_sim::directionalPredictionMargin;
+  const std::vector<double> table(72, .3);
+  for (const double fallback : {0., .25, 1.23456789}) {
+    EXPECT_DOUBLE_EQ(directionalPredictionMargin({}, 1, 1, 1, 1, 0, fallback), fallback);
+    EXPECT_DOUBLE_EQ(directionalPredictionMargin(table, 1, 1, 0, .099, 0, fallback), fallback);
+    EXPECT_DOUBLE_EQ(directionalPredictionMargin(table, 1, 0, 0, 1, 0, fallback), fallback);
+    EXPECT_DOUBLE_EQ(directionalPredictionMargin(table, 1, 1e-14, 0, 1, 0, fallback), fallback);
+    EXPECT_DOUBLE_EQ(directionalPredictionMargin(table, 1, 1, 0, .1, 0, fallback), .3);
+  }
+}

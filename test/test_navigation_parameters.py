@@ -68,3 +68,38 @@ def test_c2u_requires_a_table():
     """A named C2u run must not silently run ordinary C2."""
     with pytest.raises(ValueError, match='calibration_file'):
         NAV.navigation_parameters(ROOT / 'config/simulation', 'mppi_cvu', 0.)
+
+
+def test_c2d_passes_flat_directional_table_and_c2u_fallback(tmp_path):
+    """Catch swapped time/bin axes and loss of the original low-speed fallback."""
+    config = ROOT / 'config/simulation'
+    directions = [[j + b / 100. for b in range(36)] for j in range(32)]
+    path = table(tmp_path, directional_prediction_margins=directions)
+    expected = NAV.navigation_parameters(config, 'mppi_cvu', 0., path)
+    expected['controller_server']['ros__parameters']['FollowPath'][
+        'TrackedObstacleCritic']['directional_prediction_margins'] = [
+            r for row in directions for r in row]
+    assert NAV.navigation_parameters(config, 'mppi_cvd', 0., path) == expected
+
+
+@pytest.mark.parametrize('directions', [
+    None, [], [[0.] * 35] * 32, [[0.] * 36] * 31, [[-1.] * 36] * 32,
+    [[float('nan')] * 36] * 32, [[True] * 36] * 32])
+def test_c2d_rejects_missing_or_invalid_directions(tmp_path, directions):
+    """A named C2d run must not silently fall back to C2u."""
+    path = table(tmp_path, directional_prediction_margins=directions)
+    with pytest.raises(ValueError, match='directional_prediction_margins'):
+        NAV.navigation_parameters(ROOT / 'config/simulation', 'mppi_cvd', 0., path)
+
+
+@pytest.mark.parametrize('noise', [0., .2, .5])
+def test_c2d_selects_noise_table_with_exact_existing_c2u_fallback(noise):
+    """Catch use of the wrong noise table or a newly filtered C2u fallback."""
+    config = ROOT / 'config/simulation'
+    params = NAV.navigation_parameters(config, 'mppi_cvd', 0., noise=noise)
+    critic = params['controller_server']['ros__parameters']['FollowPath']['TrackedObstacleCritic']
+    old = yaml.safe_load((config / 'c2u_margins_shm' / f'noise_{noise}.yaml').read_text())
+    selected = yaml.safe_load((config / 'c2d_margins' / f'noise_{noise}.yaml').read_text())
+    assert critic['prediction_margins'] == old['prediction_margins']
+    assert critic['directional_prediction_margins'] == [
+        r for row in selected['directional_prediction_margins'] for r in row]
