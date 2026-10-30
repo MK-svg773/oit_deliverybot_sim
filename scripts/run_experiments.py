@@ -367,6 +367,7 @@ def run_trial(args, environment, scenario, method, trial, root, config):
         nav = launch_process(
             ['ros2', 'launch', 'oit_deliverybot_sim', 'simulation_navigation.launch.py',
              f'environment:={args.environment}', f'method:={method}',
+             f'collision_monitor:={args.collision_monitor}',
              f'additional_delay:={args.additional_delay}',
              f'velocity_noise_std:={args.velocity_noise_std}',
              *([f'calibration_file:={args.calibration_file}'] if method == 'mppi_cvu' else [])],
@@ -391,6 +392,8 @@ def run_trial(args, environment, scenario, method, trial, root, config):
                   '/sim/body_contacts', '/sim/navigate_to_pose/_action/status',
                   '/sim/obstacle_tracks',
                   '/sim/local_costmap/costmap_raw', '/sim/local_costmap/published_footprint']
+        if args.collision_monitor == 'true':
+            topics += ['/sim/cmd_vel_smoothed', '/sim/collision_monitor_state']
         recorder = launch_process(['ros2', 'bag', 'record', '--storage', 'mcap', '--use-sim-time',
                                    '--include-hidden-topics', '--output', str(output / 'bag'),
                                    '--topics', *topics], output / 'recording.log', env, handles)
@@ -463,6 +466,7 @@ def run_trial(args, environment, scenario, method, trial, root, config):
         result = {
             'scenario': scenario,
             'method': method,
+            'collision_monitor': args.collision_monitor,
             'trial': trial,
             'seed': seed,
             'seed_set': args.seed_set,
@@ -532,6 +536,7 @@ def main():
     parser.add_argument('--seed_set', choices=['development', 'final'], default='development')
     parser.add_argument('--additional_delay', type=float, default=0.)
     parser.add_argument('--velocity_noise_std', type=float, default=0.)
+    parser.add_argument('--collision_monitor', choices=['true', 'false'], default='false')
     parser.add_argument('--motion_check', choices=['true', 'false'], default='false')
     parser.add_argument('--repeats', type=int, default=1)
     parser.add_argument('--gui', choices=['true', 'false'], default='false')

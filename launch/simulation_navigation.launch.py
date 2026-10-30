@@ -53,7 +53,10 @@ def start(context):
     delay = float(LaunchConfiguration('additional_delay').perform(context))
     noise = float(LaunchConfiguration('velocity_noise_std').perform(context))
     calibration_file = LaunchConfiguration('calibration_file').perform(context)
+    collision_monitor = LaunchConfiguration('collision_monitor').perform(context) == 'true'
     params = navigation_parameters(config, method, delay, calibration_file)
+    if collision_monitor:
+        params.update(yaml.safe_load((config / 'collision_monitor.yaml').read_text()))
     params['amcl']['ros__parameters']['initial_pose'] = {
         'x': env['start'][0], 'y': env['start'][1], 'z': 0., 'yaw': env['start'][3]}
     map_file = Path(env['map']).expanduser()
@@ -73,13 +76,16 @@ def start(context):
              ('nav2_planner', 'planner_server'), ('nav2_controller', 'controller_server'),
              ('nav2_behaviors', 'behavior_server'), ('nav2_bt_navigator', 'bt_navigator'),
              ('nav2_velocity_smoother', 'velocity_smoother')]
+    if collision_monitor:
+        specs.append(('nav2_collision_monitor', 'collision_monitor'))
     actions = [RegisterEventHandler(OnShutdown(on_shutdown=[OpaqueFunction(function=cleanup)]))]
     for package, name in specs:
         remaps = [('odom', '/sim/odom')]
         if name in ('controller_server', 'behavior_server'):
             remaps += [('cmd_vel', '/sim/cmd_vel_raw')]
         if name == 'velocity_smoother':
-            remaps += [('cmd_vel', '/sim/cmd_vel_raw'), ('cmd_vel_smoothed', '/sim/cmd_vel')]
+            output_topic = '/sim/cmd_vel_smoothed' if collision_monitor else '/sim/cmd_vel'
+            remaps += [('cmd_vel', '/sim/cmd_vel_raw'), ('cmd_vel_smoothed', output_topic)]
         actions.append(Node(package=package, executable=name, name=name, namespace='sim',
                             parameters=[str(param_file)], remappings=remaps, output='screen'))
     actions.append(Node(package='oit_deliverybot_sim', executable='scan_obstacle_tracker.py',
@@ -96,6 +102,8 @@ def start(context):
 def generate_launch_description():
     config = Path(get_package_share_directory('oit_deliverybot_sim')) / 'config/simulation'
     return LaunchDescription([
+        DeclareLaunchArgument('collision_monitor', default_value='false',
+                              choices=['true', 'false']),
         DeclareLaunchArgument('environment', default_value=str(config / 'corridor.yaml')),
         DeclareLaunchArgument('method', default_value='dwb', choices=[
                               'dwb', 'mppi', 'mppi_pos', 'mppi_cv', 'mppi_age', 'mppi_cvu']),

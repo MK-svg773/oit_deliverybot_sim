@@ -164,3 +164,79 @@ def test_age_comparison_cli_outputs(tmp_path):
     assert 'C_age−C1' in notes and 'C2−C_age' in notes
     assert (output / 'success_rates.png').is_file()
     assert (output / 'differences.png').is_file()
+
+
+def monitor_rows():
+    """Use the same method/seed on both sides of the intervention."""
+    rows = []
+    for scene in ('crossing', 'following'):
+        for seed in range(1, 7):
+            for method, enabled, successes, stopped in (
+                    ('mppi', '', 1, 10), ('mppi', 'true', 3, 10 + seed),
+                    ('mppi_pos', 'true', 2, 10 + seed),
+                    ('mppi_cv', 'false', 2, 10), ('mppi_cv', 'true', 6, 10 + 3 * seed)):
+                rows.append({
+                    'scenario': scene, 'method': method, 'seed': str(seed),
+                    'collision_monitor': enabled,
+                    'outcome': 'success' if seed <= successes else 'collision',
+                    'arrival_s': str(stopped), 'stopped_s': str(stopped),
+                    'min_clearance_m': str(stopped / 100), 'output': '',
+                })
+    return rows
+
+
+def test_monitor_pairing_direction_and_holm():
+    """Do not collapse CM on/off trials or pair CM C1 with baseline C2."""
+    rows = monitor_rows()
+    labels = ('C0-C0cm', 'C2-C2cm', 'C1cm-C2cm')
+    summary, tests = compare.analyze(rows, comparisons=labels)
+    assert {r['method'] for r in summary} == {
+        'mppi', 'mppi_cm', 'mppi_pos_cm', 'mppi_cv', 'mppi_cv_cm'}
+    for label, wins, delta, arrival_n in (
+            ('C0-C0cm', 2, 3.5, 1), ('C2-C2cm', 4, 10.5, 2),
+            ('C1cm-C2cm', 4, 7., 2)):
+        group = {r['metric']: r for r in tests
+                 if r['scenario'] == 'crossing' and r['comparison'] == label}
+        assert (group['success']['a_only'], group['success']['b_only']) == (0, wins)
+        assert group['stopped_s']['median_delta'] == delta
+        assert group['stopped_s']['p_holm'] == .0625  # Two scenes per comparison/metric.
+        assert group['arrival_s']['n'] == arrival_n
+    with pytest.raises(ValueError, match='Duplicate'):
+        compare.analyze(rows + rows[:1], comparisons=labels)
+    with pytest.raises(ValueError, match='seed'):
+        compare.analyze(rows[:-1], comparisons=labels)
+    assert compare.key(rows[0]) == compare.key(
+        {k: v for k, v in rows[0].items() if k != 'collision_monitor'})
+
+
+def test_monitor_comparison_cli_preserves_recorded_methods(tmp_path):
+    """Accept combined historical/new CSVs without relabeling recorded methods."""
+    source = tmp_path / 'input.csv'
+    rows = monitor_rows()
+    compare.write_csv(source, rows)
+    output = tmp_path / 'analysis'
+    result = subprocess.run([
+        sys.executable, str(Path(compare.__file__)), str(source), '--output', str(output),
+        '--comparisons', 'C0-C0cm', 'C2-C2cm', 'C1cm-C2cm'], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert compare.read_csv(output / 'results.csv') == rows
+    tests = compare.read_csv(output / 'tests.csv')
+    assert {r['delta_direction'] for r in tests} == {
+        'mppi_cm - mppi', 'mppi_cv_cm - mppi_cv', 'mppi_cv_cm - mppi_pos_cm'}
+    assert (output / 'success_rates.png').is_file()
+
+
+def test_monitor_retry_replaces_only_matching_intervention(tmp_path):
+    """A CM retry must not overwrite the baseline with the same seed and method."""
+    rows = [dict(r, outcome='infrastructure_error') for r in monitor_rows()[:2]]
+    original = tmp_path / 'original.csv'
+    compare.write_csv(original, rows)
+    retry = tmp_path / 'retry'
+    retry.mkdir()
+    compare.write_csv(retry / 'results.csv', [dict(
+        rows[1], outcome='success', output=str(retry / 'trial'))])
+    index = tmp_path / 'retry_index.csv'
+    index.write_text('scenario,method,seed,collision_monitor,retry_output\n'
+                     'crossing,mppi,1,true,' + str(retry / 'trial') + '\n')
+    loaded = compare.load_results(original, index)
+    assert [r['outcome'] for r in loaded] == ['infrastructure_error', 'success']

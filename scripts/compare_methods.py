@@ -22,6 +22,9 @@ COMPARISONS = {
     'C_age-C2': ('mppi_age', 'mppi_cv'),
     'C2-C2u': ('mppi_cv', 'mppi_cvu'),
     'C1-C2u': ('mppi_pos', 'mppi_cvu'),
+    'C0-C0cm': ('mppi', 'mppi_cm'),
+    'C2-C2cm': ('mppi_cv', 'mppi_cv_cm'),
+    'C1cm-C2cm': ('mppi_pos_cm', 'mppi_cv_cm'),
 }
 METRICS = ('success', 'collision', 'arrival_s', 'stopped_s', 'min_clearance_m')
 
@@ -32,9 +35,15 @@ def read_csv(path):
         return list(csv.DictReader(stream))
 
 
+def analysis_method(row):
+    """Distinguish intervention groups without changing recorded method names."""
+    enabled = str(row.get('collision_monitor', '')).lower() == 'true'
+    return row['method'] + ('_cm' if enabled else '')
+
+
 def key(row):
     """Pair by scenario, method and seed rather than trial number."""
-    return row['scenario'], row['method'], int(row['seed'])
+    return row['scenario'], analysis_method(row), int(row['seed'])
 
 
 def load_results(path, replacements=None):
@@ -133,7 +142,7 @@ def analyze(rows, comparisons=DEFAULT_COMPARISONS):
     for scene in scenes:
         seeds = {int(r['seed']) for r in rows if r['scenario'] == scene}
         for method in methods:
-            group = [r for r in rows if r['scenario'] == scene and r['method'] == method]
+            group = [r for r in rows if r['scenario'] == scene and analysis_method(r) == method]
             if {int(r['seed']) for r in group} != seeds:
                 raise ValueError(f'Unmatched seed sets: {scene}/{method}')
             counts = Counter(r['outcome'] for r in group)
@@ -305,7 +314,7 @@ def write_outputs(rows, summary, tests, output):
         warnings = text.count('Control loop missed')
         timing.append({
             'scenario': row['scenario'],
-            'method': row['method'],
+            'method': analysis_method(row),
             'seed': row['seed'],
             'real_time_factor': row['real_time_factor'],
             'warning_count': warnings,

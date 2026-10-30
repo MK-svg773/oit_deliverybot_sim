@@ -51,6 +51,30 @@ LiDARは720×32点、10Hzの理想モデル。反射強度・欠測・走査中�
 独自処理は`/sim/lidar_points`、`/sim/scan`、`/sim/odom`、目的地・経路を入力にできる。
 速度は`/sim/cmd_vel_raw`へ出し、共通smootherが`/sim/cmd_vel`へ出す。制御器は一つずつ有効にする。
 
+## Collision Monitorによる停止介入（既定無効）
+
+`experiment.launch.py`と`simulation_navigation.launch.py`の
+`collision_monitor:=true`でAPT版`nav2_collision_monitor`を有効にする。
+既定`false`では従来の指令経路を保つ。有効時は
+`cmd_vel_raw → velocity_smoother → cmd_vel_smoothed → collision_monitor → cmd_vel`
+（トピックはすべて`/sim/`配下）となる。
+設定は`collision_monitor.yaml`のapproach領域1個。既存local costmapのfootprintと
+`/sim/scan`を使い、障害物の推定速度や真値は使わない。
+これは静止観測点へ現在の指令で接近する時間に基づく減速・停止であり、動体の相対TTCではない。
+
+```bash
+ros2 launch oit_deliverybot_sim experiment.launch.py \
+  scenario:=crossing method:=mppi,mppi_cv collision_monitor:=true seed:=12
+```
+
+`results.csv`のmethod名は変えず、`collision_monitor`列へtrue/falseを記録する。
+有効時のbagにはsmoother出力と`/sim/collision_monitor_state`も含める。
+同じ場面・seedの有無の行をまとめたCSVに対し、
+`compare_methods.py --comparisons C0-C0cm C2-C2cm C1cm-C2cm`で比較できる。
+列がない過去のCSVと空欄は無効として扱い、比較表だけに`_cm`を付けて区別する。
+再実行indexにも`collision_monitor`列を含め、同じ介入条件の行を指定する。
+Holmは従来どおり比較×指標ごとの全場面。実機性能や衝突回避保証を示す機能ではない。
+
 ## MPPI 3条件（第1段階）
 
 ```bash
