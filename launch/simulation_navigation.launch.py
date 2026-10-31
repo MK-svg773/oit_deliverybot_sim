@@ -52,6 +52,7 @@ def start(context):
     method = LaunchConfiguration('method').perform(context)
     delay = float(LaunchConfiguration('additional_delay').perform(context))
     noise = float(LaunchConfiguration('velocity_noise_std').perform(context))
+    map_exclusion_distance = float(LaunchConfiguration('map_exclusion_distance').perform(context))
     calibration_file = LaunchConfiguration('calibration_file').perform(context)
     params = navigation_parameters(config, method, delay, calibration_file)
     params['amcl']['ros__parameters']['initial_pose'] = {
@@ -85,7 +86,9 @@ def start(context):
     actions.append(Node(package='oit_deliverybot_sim', executable='scan_obstacle_tracker.py',
                         remappings=[('/map', '/sim/map')],
                         parameters=[{'use_sim_time': True, 'additional_delay': delay,
-                                     'velocity_noise_std': noise}], output='screen'))
+                                     'velocity_noise_std': noise,
+                                     'map_exclusion_distance': map_exclusion_distance}],
+                        output='screen'))
     actions.append(Node(package='nav2_lifecycle_manager', executable='lifecycle_manager',
                         name='lifecycle_manager', namespace='sim', parameters=[{
                             'use_sim_time': True, 'autostart': True, 'bond_timeout': 10.,
@@ -102,4 +105,5 @@ def generate_launch_description():
         DeclareLaunchArgument('calibration_file', default_value=''),
         DeclareLaunchArgument('additional_delay', default_value='0.0'),
         DeclareLaunchArgument('velocity_noise_std', default_value='0.0'),
+        DeclareLaunchArgument('map_exclusion_distance', default_value='0.20'),
         OpaqueFunction(function=start)])

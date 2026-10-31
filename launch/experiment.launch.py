@@ -17,6 +17,7 @@ def generate_launch_description():
         'output': str(Path.home() / 'ros2_ws/experiments/simulation'), 'domain': '71',
         'wall_timeout': '600', 'seed': '1', 'seed_set': 'development',
         'additional_delay': '0.0', 'velocity_noise_std': '0.0', 'motion_check': 'false',
+        'map_exclusion_distance': '0.20',
         'calibration_file': '',
     }
     return LaunchDescription([

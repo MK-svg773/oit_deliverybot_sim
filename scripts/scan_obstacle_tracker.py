@@ -28,6 +28,9 @@ class ScanObstacleTracker(Node):
         super().__init__('scan_obstacle_tracker')
         self.delay = self.declare_parameter('additional_delay', 0.).value
         self.noise = self.declare_parameter('velocity_noise_std', 0.).value
+        self.map_exclusion_distance = self.declare_parameter('map_exclusion_distance', .20).value
+        if not math.isfinite(self.map_exclusion_distance) or self.map_exclusion_distance < 0:
+            raise ValueError('Map exclusion distance must be finite and nonnegative')
         if not all(math.isfinite(v) and v >= 0 for v in (self.delay, self.noise)):
             raise ValueError('Delay and noise standard deviation must be finite and nonnegative')
         self.rng = np.random.default_rng(0)
@@ -54,7 +57,7 @@ class ScanObstacleTracker(Node):
         if message.header.frame_id != 'map':
             self.get_logger().error('Static map must have frame_id=map')
             return
-        self.map = StaticMap(message)
+        self.map = StaticMap(message, self.map_exclusion_distance)
 
     def tick(self):
         """Process scans with valid TF and release delayed outputs."""

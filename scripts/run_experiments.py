@@ -369,6 +369,7 @@ def run_trial(args, environment, scenario, method, trial, root, config):
              f'environment:={args.environment}', f'method:={method}',
              f'additional_delay:={args.additional_delay}',
              f'velocity_noise_std:={args.velocity_noise_std}',
+             f'map_exclusion_distance:={args.map_exclusion_distance}',
              *([f'calibration_file:={args.calibration_file}'] if method == 'mppi_cvu' else [])],
             output / 'navigation.log', env, handles)
         monitor = Monitor(environment, obstacle, output)
@@ -471,6 +472,7 @@ def run_trial(args, environment, scenario, method, trial, root, config):
             'actual_segments': json.dumps(obstacle['segments']) if obstacle else '[]',
             'additional_delay_s': args.additional_delay,
             'velocity_noise_std_mps': args.velocity_noise_std,
+            'map_exclusion_distance_m': args.map_exclusion_distance,
             'motion_check': args.motion_check,
             'track_messages': monitor.track_messages if monitor else 0,
             'track_detections': monitor.track_detections if monitor else 0,
@@ -532,6 +534,7 @@ def main():
     parser.add_argument('--seed_set', choices=['development', 'final'], default='development')
     parser.add_argument('--additional_delay', type=float, default=0.)
     parser.add_argument('--velocity_noise_std', type=float, default=0.)
+    parser.add_argument('--map_exclusion_distance', type=float, default=.20)
     parser.add_argument('--motion_check', choices=['true', 'false'], default='false')
     parser.add_argument('--repeats', type=int, default=1)
     parser.add_argument('--gui', choices=['true', 'false'], default='false')
@@ -560,6 +563,8 @@ def main():
     if not all(math.isfinite(v) and v >= 0
                for v in (args.additional_delay, args.velocity_noise_std)):
         parser.error('Delay/noise must be finite and nonnegative')
+    if not math.isfinite(args.map_exclusion_distance) or args.map_exclusion_distance < 0:
+        parser.error('Map exclusion distance must be finite and nonnegative')
     os.environ['ROS_DOMAIN_ID'] = args.domain
     root = args.output.expanduser().resolve() / datetime.now().strftime('batch_%Y%m%d_%H%M%S_%f')
     root.mkdir(parents=True)

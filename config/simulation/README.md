@@ -14,6 +14,9 @@ ros2 launch oit_deliverybot_sim experiment.launch.py scenario:=crossing method:=
 - `gui:=true`でGazeboを表示。初期位置・目標はenvironmentのYAMLで指定する。
 - シナリオ内の障害物位置はworld/map座標。
 - `domain`は既定71。別端末から見るときも同じROS_DOMAIN_IDを設定する。
+- `map_exclusion_distance`は追跡器が静的占有セル付近のscan点を除く距離（m、既定0.20）。
+  学校の除外距離確認では`map_exclusion_distance:=0.30`を明示する。通路の既定値は変わらない。
+  使用値はresults.csvの`map_exclusion_distance_m`へ記録する。
 
 結果は`~/ros2_ws/experiments/simulation/batch_…/`。試行ごとにbag(MCAP)、samples.csv、起動ログを保存する。
 全試行のresults.csvとcomparison.pngも生成する。成功・衝突・時間切れ・走行失敗・基盤異常・取消を区別する。

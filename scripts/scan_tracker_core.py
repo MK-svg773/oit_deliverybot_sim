@@ -17,8 +17,9 @@ def rotation(q):
 class StaticMap:
     """Cache distances to static occupied map cells."""
 
-    def __init__(self, message):
+    def __init__(self, message, map_exclusion_distance=.20):
         """Precompute cell distances and retain map geometry."""
+        self.map_exclusion_distance = map_exclusion_distance
         self.info = message.info
         self.yaw = rotation(self.info.origin.orientation)
         cells = np.asarray(message.data).reshape(self.info.height, self.info.width)
@@ -32,7 +33,7 @@ class StaticMap:
         x = int(math.floor((c * dx + s * dy) / self.info.resolution))
         y = int(math.floor((-s * dx + c * dy) / self.info.resolution))
         return (not (0 <= x < self.info.width and 0 <= y < self.info.height) or
-                self.distance[y, x] <= 0.20)
+                self.distance[y, x] <= self.map_exclusion_distance)
 
 
 def detections(scan, transform, static_map):

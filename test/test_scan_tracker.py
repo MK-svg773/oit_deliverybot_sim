@@ -5,9 +5,53 @@ import sys
 from types import SimpleNamespace as NS
 
 import numpy as np
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
 from scan_tracker_core import detections, StaticMap, Tracker  # noqa: E402
+
+
+@pytest.mark.parametrize('resolution,default_count', [(.2, 5), (float(np.float32(.2)), 1)])
+def test_map_exclusion_preserves_legacy_boundary_and_accepts_override(resolution, default_count):
+    """Keep the exact 0.20 boundary by default; 0.30 also removes diagonal neighbours."""
+    info = NS(width=5, height=5, resolution=resolution,
+              origin=NS(position=NS(x=0., y=0.), orientation=NS(x=0., y=0., z=0., w=1.)))
+    grid = np.zeros((5, 5), dtype=int)
+    grid[2, 2] = 100
+    message = NS(info=info, data=grid.ravel())
+    points = [((x + .5) * resolution, (y + .5) * resolution)
+              for y in range(5) for x in range(5)]
+    default = StaticMap(message)
+    explicit = StaticMap(message, map_exclusion_distance=.20)
+    wider = StaticMap(message, map_exclusion_distance=.30)
+    assert sum(default.near_wall(p) for p in points) == default_count
+    assert [default.near_wall(p) for p in points] == [explicit.near_wall(p) for p in points]
+    assert sum(wider.near_wall(p) for p in points) == 9
+    assert default.near_wall((-1., -1.)) and wider.near_wall((-1., -1.))
+
+
+@pytest.mark.parametrize('override,expected', [(None, False), (.30, True)])
+def test_ros_map_exclusion_parameter_reaches_map_filter(override, expected):
+    """Catch a declared parameter that never reaches map filtering."""
+    import rclpy
+    from nav_msgs.msg import OccupancyGrid
+    from scan_obstacle_tracker import ScanObstacleTracker
+    args = [] if override is None else ['--ros-args', '-p', f'map_exclusion_distance:={override}']
+    rclpy.init(args=args, domain_id=72)
+    node = ScanObstacleTracker()
+    try:
+        message = OccupancyGrid()
+        message.header.frame_id = 'map'
+        message.info.width = message.info.height = 5
+        message.info.resolution = float(np.float32(.2))
+        message.info.origin.orientation.w = 1.
+        message.data = [0] * 25
+        message.data[12] = 100
+        node.on_map(message)
+        assert bool(node.map.near_wall((.7, .7))) is expected
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
 
 
 def test_synthetic_scans_remove_wall_and_estimate_velocity():
