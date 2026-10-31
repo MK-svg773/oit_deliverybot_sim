@@ -164,3 +164,21 @@ def test_age_comparison_cli_outputs(tmp_path):
     assert 'C_age−C1' in notes and 'C2−C_age' in notes
     assert (output / 'success_rates.png').is_file()
     assert (output / 'differences.png').is_file()
+
+
+def test_stop_hypothesis_pairing_and_holm():
+    """Keep all three baselines paired with C2h and preserve the scene correction."""
+    rows = age_rows()
+    rows += [dict(r, method='mppi_cvs', stopped_s=str(float(r['stopped_s']) + int(r['seed'])))
+             for r in rows if r['method'] == 'mppi_cv']
+    _, tests = compare.analyze(rows, comparisons=('C2-C2h', 'C1-C2h', 'C_age-C2h'))
+    for label, delta, arrival_n, source in (
+            ('C2-C2h', 3.5, 6, 'mppi_cv'),
+            ('C1-C2h', 14., 2, 'mppi_pos'),
+            ('C_age-C2h', 10.5, 4, 'mppi_age')):
+        group = {r['metric']: r for r in tests
+                 if r['scenario'] == 'following' and r['comparison'] == label}
+        assert group['stopped_s']['median_delta'] == delta
+        assert group['stopped_s']['delta_direction'] == f'mppi_cvs - {source}'
+        assert group['stopped_s']['p_holm'] == .15625
+        assert group['arrival_s']['n'] == arrival_n

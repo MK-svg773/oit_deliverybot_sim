@@ -30,8 +30,14 @@ public:
     get(collision_cost_, "collision_cost", 1000.0);
     get(use_velocity_, "use_velocity", false);
     get(extrapolate_future_, "extrapolate_future", true);
+    get(stop_hypothesis_, "stop_hypothesis", false, ParameterType::Static);
     get(max_age_, "max_track_age", 1.0);
     get(prediction_margins_, "prediction_margins", std::vector<double>{}, ParameterType::Static);
+    if (stop_hypothesis_ &&
+      (!use_velocity_ || !extrapolate_future_ || !prediction_margins_.empty()))
+    {
+      throw std::runtime_error("stop_hypothesis requires CV prediction without prediction_margins");
+    }
     if (weight_ < 0 || power_ < 1 || margin_ < 0 || max_age_ <= 0 || collision_cost_ < 0) {
       throw std::runtime_error("Invalid TrackedObstacleCritic parameters");
     }
@@ -53,6 +59,9 @@ public:
         std::lock_guard<std::mutex> guard(mutex_);
         tracks_ = msg;
       });
+    if (stop_hypothesis_) {
+      RCLCPP_INFO(logger_, "TrackedObstacleCritic stop_hypothesis=true (CV union age position)");
+    }
     RCLCPP_INFO(logger_,
       "TrackedObstacleCritic use_velocity=%s weight=%.2f power=%d collision_cost=%.2f",
       use_velocity_ ? "true" : "false", weight_, power_, collision_cost_);
@@ -144,6 +153,14 @@ public:
                 data.trajectories.yaws(i, j),
                 obstacle.x + obstacle.vx * time, obstacle.y + obstacle.vy * time,
                 obstacle.radius, footprint));
+          if (stop_hypothesis_) {
+            // Union of CV occupancy and stopping now after observation-age correction.
+            nearest = std::min(nearest, oit_deliverybot_sim::footprintCircleDistance(
+                  data.trajectories.x(i, j), data.trajectories.y(i, j),
+                  data.trajectories.yaws(i, j),
+                  obstacle.x + obstacle.vx * age, obstacle.y + obstacle.vy * age,
+                  obstacle.radius, footprint));
+          }
         }
         cost.addStep(nearest, margin_, prediction_margins_.empty() ? 0.0 : prediction_margins_[j]);
       }
@@ -166,6 +183,7 @@ private:
   int power_{1};
   bool use_velocity_{false};
   bool extrapolate_future_{true};
+  bool stop_hypothesis_{false};
   std::vector<double> prediction_margins_;
   float calibrated_model_dt_{0};
   std::mutex mutex_;

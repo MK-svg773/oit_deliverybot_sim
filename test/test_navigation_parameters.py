@@ -68,3 +68,12 @@ def test_c2u_requires_a_table():
     """A named C2u run must not silently run ordinary C2."""
     with pytest.raises(ValueError, match='calibration_file'):
         NAV.navigation_parameters(ROOT / 'config/simulation', 'mppi_cvu', 0.)
+
+
+def test_stop_hypothesis_only_adds_the_union_flag():
+    """C2h must retain C2 tuning and ignore a calibration artifact in mixed runs."""
+    config = ROOT / 'config/simulation'
+    expected = NAV.navigation_parameters(config, 'mppi_cv', 0.)
+    expected['controller_server']['ros__parameters']['FollowPath'][
+        'TrackedObstacleCritic']['stop_hypothesis'] = True
+    assert NAV.navigation_parameters(config, 'mppi_cvs', 0., '/absent/table.yaml') == expected

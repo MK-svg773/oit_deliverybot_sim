@@ -18,7 +18,7 @@ def navigation_parameters(config, method, delay, calibration_file=''):
     if method.startswith('mppi'):
         params['controller_server']['ros__parameters']['FollowPath'] = yaml.safe_load(
             (config / 'mppi.yaml').read_text())
-    if method in ('mppi_pos', 'mppi_cv', 'mppi_age', 'mppi_cvu'):
+    if method in ('mppi_pos', 'mppi_cv', 'mppi_age', 'mppi_cvu', 'mppi_cvs'):
         controller = params['controller_server']['ros__parameters']['FollowPath']
         controller['critics'].append('TrackedObstacleCritic')
         controller['TrackedObstacleCritic'] = {
@@ -26,6 +26,8 @@ def navigation_parameters(config, method, delay, calibration_file=''):
             'safety_margin': 0.25, 'max_track_age': delay + 1.0}
         if method == 'mppi_age':
             controller['TrackedObstacleCritic']['extrapolate_future'] = False
+        if method == 'mppi_cvs':
+            controller['TrackedObstacleCritic']['stop_hypothesis'] = True
         if method == 'mppi_cvu':
             if not calibration_file:
                 raise ValueError('mppi_cvu requires calibration_file')
@@ -98,7 +100,8 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('environment', default_value=str(config / 'corridor.yaml')),
         DeclareLaunchArgument('method', default_value='dwb', choices=[
-                              'dwb', 'mppi', 'mppi_pos', 'mppi_cv', 'mppi_age', 'mppi_cvu']),
+                              'dwb', 'mppi', 'mppi_pos', 'mppi_cv', 'mppi_age',
+                              'mppi_cvu', 'mppi_cvs']),
         DeclareLaunchArgument('calibration_file', default_value=''),
         DeclareLaunchArgument('additional_delay', default_value='0.0'),
         DeclareLaunchArgument('velocity_noise_std', default_value='0.0'),

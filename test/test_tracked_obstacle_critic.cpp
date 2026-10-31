@@ -49,13 +49,14 @@ protected:
 
   std::shared_ptr<mppi::critics::CriticFunction> create(
     const std::string & name, bool velocity, bool future, bool enabled,
-    const std::vector<double> & margins = {})
+    const std::vector<double> & margins = {}, bool stop_hypothesis = false)
   {
     const auto ns = "FollowPath." + name;
     node->declare_parameter(ns + ".use_velocity", velocity);
     node->declare_parameter(ns + ".extrapolate_future", future);
     node->declare_parameter(ns + ".enabled", enabled);
     node->declare_parameter(ns + ".prediction_margins", margins);
+    if (stop_hypothesis) {node->declare_parameter(ns + ".stop_hypothesis", true);}
     auto critic = loader.createSharedInstance("mppi::critics::TrackedObstacleCritic");
     critic->on_configure(node, "FollowPath", ns, costmap, handler.get());
     return critic;
@@ -75,6 +76,7 @@ TEST_F(CriticPlugin, LegacyScoresAndZeroMarginC2uAreBitIdentical)
   auto c2 = create("C2", true, true, true);
   auto age = create("CAge", true, false, true);
   auto c2u = create("C2u", true, true, true, std::vector<double>(32, 0.));
+  auto c2h = create("C2h", true, true, true, {}, true);
   auto wider = create("Wider", true, true, true, std::vector<double>(32, .3));
 
   auto sender = std::make_shared<rclcpp::Node>("calibration_test_tracks");
@@ -97,10 +99,10 @@ TEST_F(CriticPlugin, LegacyScoresAndZeroMarginC2uAreBitIdentical)
   *sensor_msgs::PointCloud2Iterator<float>(cloud, "radius") = .25f;
   rclcpp::executors::SingleThreadedExecutor executor;
   executor.add_node(node->get_node_base_interface());
-  for (size_t attempt = 0; attempt < 100 && publisher->get_subscription_count() < 6; ++attempt) {
+  for (size_t attempt = 0; attempt < 100 && publisher->get_subscription_count() < 7; ++attempt) {
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
-  ASSERT_EQ(publisher->get_subscription_count(), 6u);
+  ASSERT_EQ(publisher->get_subscription_count(), 7u);
   for (size_t attempt = 0; attempt < 20; ++attempt) {
     publisher->publish(cloud);
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -126,7 +128,7 @@ TEST_F(CriticPlugin, LegacyScoresAndZeroMarginC2uAreBitIdentical)
     nullptr, std::nullopt, std::nullopt};
   const std::vector<oit_deliverybot_sim::FootprintPoint> footprint{
     {.17, .28}, {.17, -.28}, {-.41, -.28}, {-.41, .28}};
-  for (const auto & critic : {c0, c1, c2, age, c2u, wider}) {
+  for (const auto & critic : {c0, c1, c2, age, c2u, wider, c2h}) {
     costs.fill(5.0f);  // Existing standard-critic costs must survive.
     critic->score(data);
     ASSERT_FALSE(data.fail_flag);
@@ -137,10 +139,17 @@ TEST_F(CriticPlugin, LegacyScoresAndZeroMarginC2uAreBitIdentical)
         const double t = critic == age ? .3 : .3 + (j + 1) * dt;
         const double vx = critic == c1 ? 0. : static_cast<double>(-.7f);
         const double vy = critic == c1 ? 0. : static_cast<double>(.1f);
-        const double gap = oit_deliverybot_sim::footprintCircleDistance(
+        double gap = oit_deliverybot_sim::footprintCircleDistance(
           trajectories.x(i, j), trajectories.y(i, j), trajectories.yaws(i, j),
           static_cast<double>(1.2f) + vx * t, static_cast<double>(.2f) + vy * t,
           .25, footprint);
+        if (critic == c2h) {
+          const double stopped_gap = oit_deliverybot_sim::footprintCircleDistance(
+            trajectories.x(i, j), trajectories.y(i, j), trajectories.yaws(i, j),
+            static_cast<double>(1.2f) + vx * .3, static_cast<double>(.2f) + vy * .3,
+            .25, footprint);
+          gap = std::min(gap, stopped_gap);
+        }
         shortage += std::max(0., (critic == wider ? .55 : .25) - gap);
         overlap |= gap < 0.;
       }
@@ -154,6 +163,14 @@ TEST_F(CriticPlugin, LegacyScoresAndZeroMarginC2uAreBitIdentical)
   dt = .2f;
   c2u->score(data);
   EXPECT_TRUE(data.fail_flag);  // Changing dt cannot silently reuse calibration.
+}
+
+TEST_F(CriticPlugin, StopHypothesisCannotCombineWithMarginsOrNonCvModes)
+{
+  EXPECT_THROW(create("StopMargin", true, true, true, std::vector<double>(32, .1), true),
+    std::runtime_error);
+  EXPECT_THROW(create("StopPosition", false, true, true, {}, true), std::runtime_error);
+  EXPECT_THROW(create("StopAge", true, false, true, {}, true), std::runtime_error);
 }
 
 TEST_F(CriticPlugin, InvalidTablesFailConfiguration)
